@@ -45,6 +45,11 @@ OUTPUT_HTML = os.path.join(DOCS_DIR, "index.html")
 
 ZSCORE_WINDOW = 60          # Z-Score 滾動視窗（交易日）
 TXO_MULTIPLIER = 50         # 台指選擇權每點 50 元
+
+# 選擇權未平倉口徑：
+#   "buy" = 買方未平倉（外資實際投入的權利金，對應文件「真金白銀投入」）
+#   "net" = 未平倉買賣淨額（傳統券商報告常用口徑）
+OPT_SIDE = "buy"
 REQUEST_TIMEOUT = 20
 RETRY = 3
 
@@ -205,7 +210,8 @@ def fetch_futures(date_slash):
 
 
 def _parse_taifex_opt(text):
-    """解析三大法人-選擇權買賣權分計 CSV，回傳買權/賣權 外資未平倉(口數,金額元)"""
+    """解析三大法人-選擇權買賣權分計 CSV，回傳買權/賣權 外資未平倉(口數,金額元)。
+       依 OPT_SIDE 明確選欄：buy=買方未平倉、net=未平倉買賣淨額。"""
     reader = csv.reader(StringIO(text))
     rows = [r for r in reader if len(r) > 3]
     if not rows:
@@ -215,10 +221,12 @@ def _parse_taifex_opt(text):
     c_cp = find_col(header, "買賣權")
     c_role = find_col(header, "身分別") if find_col(header, "身分別") >= 0 \
         else find_col(header, "身份別")
-    c_oi = find_col(header, "未平倉", "口數")
-    c_amt = find_col(header, "未平倉", "金額")
-    if c_oi < 0:
-        c_oi = find_col(header, "未平倉")
+    if OPT_SIDE == "net":
+        c_oi = find_col(header, "未平倉", "口數", "淨額")     # 未平倉口數買賣淨額
+        c_amt = find_col(header, "未平倉", "金額", "淨額")    # 未平倉契約金額買賣淨額(千元)
+    else:                                                    # buy（預設）
+        c_oi = find_col(header, "買方", "未平倉", "口數")      # 買方未平倉口數
+        c_amt = find_col(header, "買方", "未平倉", "金額")     # 買方未平倉契約金額(千元)
     if min(c_prod, c_cp, c_role, c_oi, c_amt) < 0:
         log(f"  TAIFEX 選擇權表頭比對失敗：{header}")
         return None
@@ -343,10 +351,10 @@ def build_mock_history(n=80):
         spot = random.gauss(0, 1) * 1.2e10
         tx += random.gauss(0, 1) * 6e9
         ssf += random.gauss(0, 1) * 2e9
-        call_oi = random.uniform(2.0e5, 3.2e5)
-        put_oi = random.uniform(2.2e5, 4.0e5)
-        p_call = random.uniform(15, 110)
-        p_put = random.uniform(18, 180)
+        call_oi = random.uniform(8.0e3, 1.4e4)
+        put_oi = random.uniform(3.0e4, 5.0e4)
+        p_call = random.uniform(3800, 5200)      # 外資深價內合成多單，平均單價偏高
+        p_put = random.uniform(90, 280)          # 避險賣權，數十至數百點
         call_amt = call_oi * p_call * TXO_MULTIPLIER
         put_amt = put_oi * p_put * TXO_MULTIPLIER
         # 製造一段情緒飆升
@@ -633,7 +641,7 @@ _TEMPLATE = r"""<!DOCTYPE html>
 
   <div class="panel">
     <div class="ptitle"><span class="tag">模組二A</span>選擇權平均單價 — 部位意圖
-      <span class="hint">＞150 價內攻擊　＜20 價外避險</span></div>
+      <span class="hint">賣權左軸·買權右軸　＞150 價內　＜20 價外避險</span></div>
     <div id="c2" class="chart"></div>
   </div>
 
@@ -683,22 +691,26 @@ echarts.init(document.getElementById('c1'),'dark',{renderer:'canvas'}).setOption
   ]
 });
 
-// ── 模組二A：買權/賣權平均單價 + 門檻線 ──
+// ── 模組二A：買權(右軸)/賣權(左軸) 平均單價，門檻線放賣權軸 ──
 echarts.init(document.getElementById('c2'),'dark',{renderer:'canvas'}).setOption({
   backgroundColor:'transparent', tooltip:tip(), legend:{top:0,textStyle:{color:SUB},
-    data:['買權平均單價','賣權平均單價']},
+    data:['賣權平均單價(左)','買權平均單價(右)']},
   grid:baseGrid, dataZoom:dataZoom,
   xAxis:{type:'category', data:D.dates, ...axisCommon},
-  yAxis:{type:'value', name:'點', nameTextStyle:{color:SUB}, ...axisCommon},
+  yAxis:[
+    {type:'value', name:'賣權·點', nameTextStyle:{color:SUB}, ...axisCommon},
+    {type:'value', name:'買權·點', position:'right', nameTextStyle:{color:SUB},
+     axisLine:{lineStyle:{color:AX}}, axisLabel:{color:SUB,fontSize:11}, splitLine:{show:false}}
+  ],
   series:[
-    {name:'買權平均單價', type:'line', data:D.p_call, smooth:true, symbol:'none',
-     connectNulls:true, lineStyle:{width:2,color:'#52c41a'}},
-    {name:'賣權平均單價', type:'line', data:D.p_put, smooth:true, symbol:'none',
+    {name:'賣權平均單價(左)', type:'line', data:D.p_put, smooth:true, symbol:'none',
      connectNulls:true, lineStyle:{width:2,color:'#ff4d4f'},
      markLine:{symbol:'none', label:{color:SUB,fontSize:10,position:'insideEndTop'},
        lineStyle:{type:'dashed'}, data:[
          {yAxis:D.thr_dir, name:'價內', lineStyle:{color:'#ffa940'}},
-         {yAxis:D.thr_otm, name:'價外', lineStyle:{color:'#8b93a7'}}]}}
+         {yAxis:D.thr_otm, name:'價外', lineStyle:{color:'#8b93a7'}}]}},
+    {name:'買權平均單價(右)', type:'line', yAxisIndex:1, data:D.p_call, smooth:true,
+     symbol:'none', connectNulls:true, lineStyle:{width:2,color:'#52c41a'}}
   ]
 });
 
