@@ -1,0 +1,54 @@
+name: 外資籌碼每日更新
+
+on:
+  schedule:
+    # 台灣資料約 15:00 公布；09:00 UTC = 17:00 台北時間，安全抓取
+    - cron: "0 9 * * 1-5"
+  workflow_dispatch:        # 允許手動觸發（含回補）
+    inputs:
+      date:
+        description: "回補日期 YYYYMMDD（留空＝今日）"
+        required: false
+        default: ""
+
+permissions:
+  contents: write           # 需要 commit history.json 與 docs/index.html
+
+concurrency:
+  group: foreign-chips
+  cancel-in-progress: false
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install deps
+        run: pip install -r requirements.txt
+
+      - name: Run crawler
+        run: |
+          if [ -n "${{ github.event.inputs.date }}" ]; then
+            python foreign_chips.py --date "${{ github.event.inputs.date }}"
+          else
+            python foreign_chips.py
+          fi
+
+      - name: Commit results
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add data/history.json docs/index.html
+          if git diff --staged --quiet; then
+            echo "無變更（可能為非交易日）"
+          else
+            git commit -m "chore: 更新外資籌碼 $(date -u +%Y-%m-%d)"
+            git push
+          fi
