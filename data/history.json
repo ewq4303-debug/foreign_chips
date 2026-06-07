@@ -1,0 +1,22 @@
+{
+  "history": [
+    {
+      "date": "2026-06-05",
+      "spot_net": -82631158863.0,
+      "tx_oi_amount": -625559019000.0,
+      "ssf_oi_amount": -306630740000.0,
+      "delta_tx": 0.0,
+      "delta_ssf": 0.0,
+      "e_total": -82631158863.0,
+      "call_oi": 9785.0,
+      "call_amt": 2340796000.0,
+      "put_oi": 23584.0,
+      "put_amt": 334574000.0,
+      "p_avg_call": 4784.457843638222,
+      "p_avg_put": 283.7296472184532,
+      "amount_ratio": 0.14293172066254387,
+      "contract_ratio": 2.41021972406745,
+      "amount_ratio_z": null
+    }
+  ]
+}
