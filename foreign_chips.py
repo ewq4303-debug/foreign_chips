@@ -439,39 +439,27 @@ HTML_TEMPLATE = ""   # placeholder，實際內容在 _load_template() 注入
 # ───────────────────────────────────────────────────────────────────
 #  主流程
 # ───────────────────────────────────────────────────────────────────
-def main():
-    global HTML_TEMPLATE
-    HTML_TEMPLATE = _TEMPLATE
-
-    ap = argparse.ArgumentParser()
-    ap.add_argument("--mock", action="store_true", help="產生模擬資料 HTML 預覽")
-    ap.add_argument("--date", help="指定日期 YYYYMMDD（回補用）")
-    args = ap.parse_args()
-
-    if args.mock:
-        log("模擬模式：產生 UI 預覽")
-        render_html(build_mock_history())
-        return
-
-    today = dt.datetime.now(TPE_TZ).date()
-    if args.date:
-        today = dt.datetime.strptime(args.date, "%Y%m%d").date()
-    ymd = today.strftime("%Y%m%d")
-    slash = today.strftime("%Y/%m/%d")
-    iso = today.isoformat()
-    log(f"開始抓取 {iso}")
-
+def fetch_one_day(date_obj):
+    """抓取單一日期的三來源原始值，回傳 (spot, tx, ssf, opt)"""
+    ymd = date_obj.strftime("%Y%m%d")
+    slash = date_obj.strftime("%Y/%m/%d")
     spot = fetch_spot_net(ymd)
-    log(f"  現貨買賣超：{spot}")
     tx, ssf = fetch_futures(slash)
-    log(f"  大台未平倉金額：{tx}　股票期貨：{ssf}")
     opt = fetch_options(slash)
-    log(f"  選擇權：{opt}")
+    return spot, tx, ssf, opt
 
+
+def run_single(date_obj):
+    """抓一天、更新歷史、重產 HTML"""
+    iso = date_obj.isoformat()
+    log(f"開始抓取 {iso}")
+    spot, tx, ssf, opt = fetch_one_day(date_obj)
+    log(f"  現貨買賣超：{spot}")
+    log(f"  大台未平倉金額：{tx}　股票期貨：{ssf}")
+    log(f"  選擇權：{opt}")
     if spot is None and tx is None and opt is None:
         log("三個來源皆無資料，視為非交易日，結束（不更新）")
         return
-
     hist = load_history()
     rec = compute_record(iso, spot, tx, ssf, opt, hist["history"])
     hist["history"] = upsert(hist["history"], rec)
@@ -479,6 +467,84 @@ def main():
     log(f"  E_Total={rec['e_total']/1e8:+.2f} 億　金額比={rec.get('amount_ratio')}")
     render_html(hist)
     log("完成")
+
+
+def run_backfill(start_ymd, end_ymd):
+    """區間回補：逐個交易日抓取，依日期遞增累積歷史，最後重產 HTML。
+       建議在本機執行（資料量大、時間長，會超過 Actions 的 10 分鐘上限）。"""
+    start = dt.datetime.strptime(start_ymd, "%Y%m%d").date()
+    end = dt.datetime.strptime(end_ymd, "%Y%m%d").date()
+    hist = load_history()
+    d = start
+    ok = skip = 0
+    while d <= end:
+        if d.weekday() >= 5:                 # 跳過週末
+            d += dt.timedelta(days=1)
+            continue
+        spot, tx, ssf, opt = fetch_one_day(d)
+        if spot is None and tx is None and opt is None:
+            log(f"  {d} 無資料（假日/未公布），略過")
+            skip += 1
+        else:
+            rec = compute_record(d.isoformat(), spot, tx, ssf, opt, hist["history"])
+            hist["history"] = upsert(hist["history"], rec)
+            ok += 1
+            log(f"  {d}　E_Total={rec['e_total']/1e8:+.1f}億"
+                f"　金額比={rec.get('amount_ratio')}　共 {len(hist['history'])} 筆")
+        save_history(hist)                   # 每天即時存檔，中斷可續跑
+        time.sleep(1.0)                      # 對伺服器友善
+        d += dt.timedelta(days=1)
+    render_html(hist)
+    log(f"回補完成：成功 {ok} 天、略過 {skip} 天，歷史共 {len(hist['history'])} 筆")
+
+
+def run_inspect(date_obj):
+    """傾印 TAIFEX 原始 CSV 表頭與前幾列，用來校對欄位比對關鍵字（除錯用）"""
+    slash = date_obj.strftime("%Y/%m/%d")
+    for label, url, cid in [("期貨", TAIFEX_FUT_URL, ""),
+                            ("選擇權", TAIFEX_OPT_URL, "TXO")]:
+        log(f"===== {label} 原始 CSV（{slash}）=====")
+        r = http_post(url, {"queryStartDate": slash, "queryEndDate": slash,
+                            "commodityId": cid})
+        if not r:
+            log("  抓取失敗")
+            continue
+        text = decode_taifex(r.content)
+        rows = list(csv.reader(StringIO(text)))
+        for i, row in enumerate(rows[:6]):
+            print(f"  [{i}] {row}")
+
+
+def main():
+    global HTML_TEMPLATE
+    HTML_TEMPLATE = _TEMPLATE
+
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--mock", action="store_true", help="產生模擬資料 HTML 預覽")
+    ap.add_argument("--date", help="指定單一日期 YYYYMMDD（回補一天）")
+    ap.add_argument("--backfill", nargs=2, metavar=("START", "END"),
+                    help="區間回補 YYYYMMDD YYYYMMDD（建議本機執行）")
+    ap.add_argument("--inspect", metavar="YYYYMMDD",
+                    help="傾印期交所原始 CSV 表頭，用於校對欄位")
+    args = ap.parse_args()
+
+    if args.mock:
+        log("模擬模式：產生 UI 預覽")
+        render_html(build_mock_history())
+        return
+
+    if args.inspect:
+        run_inspect(dt.datetime.strptime(args.inspect, "%Y%m%d").date())
+        return
+
+    if args.backfill:
+        run_backfill(args.backfill[0], args.backfill[1])
+        return
+
+    today = dt.datetime.now(TPE_TZ).date()
+    if args.date:
+        today = dt.datetime.strptime(args.date, "%Y%m%d").date()
+    run_single(today)
 
 
 # ===================================================================
