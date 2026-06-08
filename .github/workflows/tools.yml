@@ -1,0 +1,67 @@
+name: 工具（欄位檢視 / 區間回補）
+
+on:
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: "模式"
+        type: choice
+        options:
+          - inspect
+          - backfill
+          - rebuild
+        default: inspect
+      start:
+        description: "起始日 YYYYMMDD（inspect 用這天檢視欄位）"
+        required: true
+        default: "20260605"
+      end:
+        description: "結束日 YYYYMMDD（backfill 用；inspect 可忽略）"
+        required: false
+        default: "20260605"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: foreign-chips-tool
+  cancel-in-progress: false
+
+jobs:
+  tool:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45        # 回補較久，給足時間（仍會自動結束，不會卡死）
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install deps
+        run: pip install -r requirements.txt
+
+      - name: Run tool
+        run: |
+          if [ "${{ inputs.mode }}" = "inspect" ]; then
+            python foreign_chips.py --inspect "${{ inputs.start }}"
+          elif [ "${{ inputs.mode }}" = "rebuild" ]; then
+            python foreign_chips.py --rebuild
+          else
+            python foreign_chips.py --backfill "${{ inputs.start }}" "${{ inputs.end }}"
+          fi
+
+      - name: Commit results (backfill / rebuild)
+        if: ${{ inputs.mode == 'backfill' || inputs.mode == 'rebuild' }}
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add -A
+          if git diff --staged --quiet; then
+            echo "無資料變更"
+          else
+            git commit -m "chore: 回補外資籌碼 ${{ inputs.start }}~${{ inputs.end }}"
+            git push
+          fi
