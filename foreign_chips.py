@@ -287,24 +287,16 @@ def zscore(series, value):
     return (value - mean) / sd
 
 
-def compute_record(date_iso, spot, tx, ssf, opt, history):
-    """組裝單日完整指標。tx/ssf 為當日未平倉金額；Δ 需與前一日相比。"""
-    prev = history[-1] if history else {}
+def compute_record(date_iso, spot, tx, ssf, opt, history=None):
+    """組裝單日「原始 + 當日」欄位（不含跨日 Δ / E_Total / Z-Score，
+       那些由 recompute_derived 以完整歷史統一重算，避免插入順序造成錯誤）。"""
     rec = {
         "date": date_iso,
         "spot_net": spot,                 # 現貨買賣超（元）
         "tx_oi_amount": tx,               # 大台未平倉淨額金額（元）
         "ssf_oi_amount": ssf,             # 股票期貨未平倉淨額金額（元）
     }
-
-    # ── 模組一：總體淨曝險變化 ──
-    d_tx = (tx - prev["tx_oi_amount"]) if (tx is not None and prev.get("tx_oi_amount") is not None) else 0.0
-    d_ssf = (ssf - prev["ssf_oi_amount"]) if (ssf is not None and prev.get("ssf_oi_amount") is not None) else 0.0
-    rec["delta_tx"] = d_tx
-    rec["delta_ssf"] = d_ssf
-    rec["e_total"] = (spot or 0.0) + d_tx + d_ssf
-
-    # ── 模組二：選擇權 ──
+    # ── 模組二：選擇權（皆為當日欄位）──
     if opt:
         call_oi, call_amt = opt["call"]
         put_oi, put_amt = opt["put"]
@@ -318,12 +310,30 @@ def compute_record(date_iso, spot, tx, ssf, opt, history):
         for k in ("call_oi", "call_amt", "put_oi", "put_amt",
                   "p_avg_call", "p_avg_put", "amount_ratio", "contract_ratio"):
             rec[k] = None
-
-    # ── Z-Score（金額比）──
-    ar_series = [r.get("amount_ratio") for r in history]
-    rec["amount_ratio_z"] = (zscore(ar_series, rec["amount_ratio"])
-                             if rec["amount_ratio"] is not None else None)
     return rec
+
+
+def recompute_derived(history):
+    """以完整、排序後的歷史，統一重算所有跨日欄位（Δ大台、Δ股期、E_Total、
+       金額比 Z-Score）。與資料插入順序無關，可重複呼叫（冪等）。"""
+    history.sort(key=lambda r: r["date"])
+    ar_series = []                                   # 逐日累積金額比，供 Z-Score
+    for i, rec in enumerate(history):
+        prev = history[i - 1] if i > 0 else {}
+        tx, ssf = rec.get("tx_oi_amount"), rec.get("ssf_oi_amount")
+        spot = rec.get("spot_net") or 0.0
+        d_tx = (tx - prev["tx_oi_amount"]) if (
+            tx is not None and prev.get("tx_oi_amount") is not None) else 0.0
+        d_ssf = (ssf - prev["ssf_oi_amount"]) if (
+            ssf is not None and prev.get("ssf_oi_amount") is not None) else 0.0
+        rec["delta_tx"] = d_tx
+        rec["delta_ssf"] = d_ssf
+        rec["e_total"] = spot + d_tx + d_ssf
+        ar = rec.get("amount_ratio")
+        rec["amount_ratio_z"] = zscore(ar_series, ar) if ar is not None else None
+        if ar is not None:                           # Z 以「之前」的天數為基準
+            ar_series.append(ar)
+    return history
 
 
 def upsert(history, rec):
@@ -387,7 +397,7 @@ def signal_for(rec):
 
 
 def render_html(hist):
-    history = hist["history"]
+    history = recompute_derived(hist["history"])   # 畫圖前統一重算，冪等
     if not history:
         raise SystemExit("無資料可產生 HTML")
     latest = history[-1]
@@ -469,10 +479,11 @@ def run_single(date_obj):
         log("三個來源皆無資料，視為非交易日，結束（不更新）")
         return
     hist = load_history()
-    rec = compute_record(iso, spot, tx, ssf, opt, hist["history"])
+    rec = compute_record(iso, spot, tx, ssf, opt)
     hist["history"] = upsert(hist["history"], rec)
+    recompute_derived(hist["history"])       # 統一重算跨日欄位
     save_history(hist)
-    log(f"  E_Total={rec['e_total']/1e8:+.2f} 億　金額比={rec.get('amount_ratio')}")
+    log(f"  E_Total={rec.get('e_total', 0)/1e8:+.2f} 億　金額比={rec.get('amount_ratio')}")
     render_html(hist)
     log("完成")
 
@@ -494,14 +505,15 @@ def run_backfill(start_ymd, end_ymd):
             log(f"  {d} 無資料（假日/未公布），略過")
             skip += 1
         else:
-            rec = compute_record(d.isoformat(), spot, tx, ssf, opt, hist["history"])
+            rec = compute_record(d.isoformat(), spot, tx, ssf, opt)
             hist["history"] = upsert(hist["history"], rec)
             ok += 1
-            log(f"  {d}　E_Total={rec['e_total']/1e8:+.1f}億"
-                f"　金額比={rec.get('amount_ratio')}　共 {len(hist['history'])} 筆")
+            log(f"  {d}　金額比={rec.get('amount_ratio')}　共 {len(hist['history'])} 筆")
         save_history(hist)                   # 每天即時存檔，中斷可續跑
         time.sleep(1.0)                      # 對伺服器友善
         d += dt.timedelta(days=1)
+    recompute_derived(hist["history"])       # 全部補完後統一重算 Δ/E_Total/Z-Score
+    save_history(hist)
     render_html(hist)
     log(f"回補完成：成功 {ok} 天、略過 {skip} 天，歷史共 {len(hist['history'])} 筆")
 
@@ -534,11 +546,25 @@ def main():
                     help="區間回補 YYYYMMDD YYYYMMDD（建議本機執行）")
     ap.add_argument("--inspect", metavar="YYYYMMDD",
                     help="傾印期交所原始 CSV 表頭，用於校對欄位")
+    ap.add_argument("--rebuild", action="store_true",
+                    help="不抓網路，重算現有 history.json 的跨日欄位並重產 HTML")
     args = ap.parse_args()
 
     if args.mock:
         log("模擬模式：產生 UI 預覽")
         render_html(build_mock_history())
+        return
+
+    if args.rebuild:
+        log("重算模式：以現有 history.json 重算 Δ／E_Total／Z-Score")
+        hist = load_history()
+        if not hist["history"]:
+            log("history.json 無資料，結束")
+            return
+        recompute_derived(hist["history"])
+        save_history(hist)
+        render_html(hist)
+        log(f"重算完成，共 {len(hist['history'])} 筆")
         return
 
     if args.inspect:

@@ -10,19 +10,43 @@
 | 二A | 平均單價 `P_Avg` = 未平倉金額 / 口數 / 50 | 判斷選擇權是價外避險或價內攻擊 |
 | 二B | 金額比 `Put金額/Call金額` 的 60 日 Z-Score | 偵測極端貪婪／恐慌轉折點 |
 
-## 資料來源
-- 現貨：TWSE 三大法人買賣金額統計表（BFI82U）
-- 期貨：TAIFEX 三大法人－區分各期貨契約（臺股期貨、股票期貨）
-- 選擇權：TAIFEX 三大法人－選擇權買賣權分計（TXO）
+## 資料來源網址與驗證方式
 
-> 期交所報表「已直接公布契約金額（千元）」，等同已完成 口數×乘數×價格 換算，
-> 故本程式直接採用官方金額（已 ×1000 還原為元），免維護個股期貨 mapping 表。
+三個來源網址集中定義在 `foreign_chips.py` 上方設定區（`*_URL` 常數）。
+GET 的參數接在網址後，可直接貼瀏覽器看；POST 的參數在請求 body，需用「人類版查詢頁」核對。
 
-## 本機預覽
+| # | 內容 | 方法 | 端點（程式用） | 參數 |
+|---|---|---|---|---|
+| ① | 現貨 TWSE | GET | `https://www.twse.com.tw/rwd/zh/fund/BFI82U` | `type=day` `dayDate=YYYYMMDD` `response=json` |
+| ② | 期貨 TAIFEX | POST | `https://www.taifex.com.tw/cht/3/futContractsDateDown` | `queryStartDate=YYYY/MM/DD` `queryEndDate=YYYY/MM/DD` `commodityId=`（空＝全部） |
+| ③ | 選擇權 TAIFEX | POST | `https://www.taifex.com.tw/cht/3/callsAndPutsDateDown` | `queryStartDate` `queryEndDate` `commodityId=TXO` |
+
+**對應抓取函式**：① `fetch_spot_net()`、② `fetch_futures()`、③ `fetch_options()`。
+其中 `http_get` / `http_post` 是本檔自訂的小工具，封裝 `requests`，加上重試 3 次、逾時 20 秒、瀏覽器 User-Agent。
+
+**自行驗證**：
+- ① 直接貼這個網址看 JSON：`https://www.twse.com.tw/rwd/zh/fund/BFI82U?type=day&dayDate=20260605&response=json`
+- ② 期貨人類版查詢頁：`https://www.taifex.com.tw/cht/3/futContractsDate`
+- ③ 選擇權人類版查詢頁：`https://www.taifex.com.tw/cht/3/callsAndPutsDate`
+
+帶 `Down` 結尾＝直接下載 CSV 的端點（`--inspect` 看到的欄位即來自此）；去掉 `Down`＝同內容的網頁版。三者皆每交易日約 15:00 後公布。
+
+**抓取的關鍵欄位（千元欄已 ×1000 還原為元）**：
+- ① 「外資」買賣差額（外資及陸資＋外資自營商）
+- ② 臺股期貨、股票期貨的「多空未平倉契約金額淨額(千元)」取外資列
+- ③ 臺指選擇權 CALL/PUT 外資的「買方未平倉口數 / 買方未平倉契約金額(千元)」（`OPT_SIDE="buy"`；可改 `"net"` 改用未平倉買賣淨額口徑）
+
+> 期交所報表已直接公布契約金額，等同完成 口數×乘數×價格 換算，故直接採用官方金額，免維護個股期貨 mapping 表。
+
+## 本機預覽 / 維護指令
 ```bash
 pip install -r requirements.txt
-python foreign_chips.py --mock      # 產生模擬資料 docs/index.html
+python foreign_chips.py --mock                  # 產生模擬資料 docs/index.html
+python foreign_chips.py --inspect 20260605       # 傾印期交所原始 CSV 欄位（除錯用）
+python foreign_chips.py --backfill 20260301 20260605   # 區間回補歷史
 ```
+> 無本機環境時，上述 `--inspect` / `--backfill` 可改由 `.github/workflows/tools.yml`
+> 在 GitHub Actions 雲端執行（Actions → 工具 → Run workflow，選 mode）。
 
 ## 部署
 1. 推送整個資料夾到 GitHub repo。
