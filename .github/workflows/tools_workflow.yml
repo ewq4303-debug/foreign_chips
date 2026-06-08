@@ -9,6 +9,7 @@ on:
         options:
           - inspect
           - backfill
+          - rebuild
         default: inspect
       start:
         description: "起始日 YYYYMMDD（inspect 用這天檢視欄位）"
@@ -46,12 +47,14 @@ jobs:
         run: |
           if [ "${{ inputs.mode }}" = "inspect" ]; then
             python foreign_chips.py --inspect "${{ inputs.start }}"
+          elif [ "${{ inputs.mode }}" = "rebuild" ]; then
+            python foreign_chips.py --rebuild
           else
             python foreign_chips.py --backfill "${{ inputs.start }}" "${{ inputs.end }}"
           fi
 
-      - name: Commit results (backfill only)
-        if: ${{ inputs.mode == 'backfill' }}
+      - name: Commit results (backfill / rebuild)
+        if: ${{ inputs.mode == 'backfill' || inputs.mode == 'rebuild' }}
         run: |
           git config user.name  "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
