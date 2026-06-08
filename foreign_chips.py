@@ -68,6 +68,8 @@ TAIFEX_FUT_URL = "https://www.taifex.com.tw/cht/3/futContractsDateDown"
 TAIFEX_OPT_URL = "https://www.taifex.com.tw/cht/3/callsAndPutsDateDown"
 # TWSE 三大法人買賣金額統計表
 TWSE_BFI_URL = "https://www.twse.com.tw/rwd/zh/fund/BFI82U"
+# TWSE 發行量加權股價指數歷史（每月一檔，含每日開高低收）
+TWSE_TAIEX_URL = "https://www.twse.com.tw/rwd/zh/TAIEX/MI_5MINS_HIST"
 
 
 # ───────────────────────────────────────────────────────────────────
@@ -258,6 +260,58 @@ def fetch_options(date_slash):
     return _parse_taifex_opt(decode_taifex(r.content))
 
 
+_TAIEX_CACHE = {}        # {YYYYMM: {iso_date: 收盤指數}}
+
+
+def _norm_roc_date(s):
+    """把 '115/06/03' 或 '2026/06/03' 正規化為 '2026-06-03'，失敗回 None"""
+    s = str(s).strip().replace("年", "/").replace("月", "/").replace("日", "")
+    parts = [p for p in s.replace("-", "/").split("/") if p != ""]
+    if len(parts) < 3:
+        return None
+    try:
+        y, m, d = int(parts[0]), int(parts[1]), int(parts[2])
+    except ValueError:
+        return None
+    if y < 1911:                       # 民國 → 西元
+        y += 1911
+    try:
+        return dt.date(y, m, d).isoformat()
+    except ValueError:
+        return None
+
+
+def fetch_taiex_month(yyyymm):
+    """抓某月份每日加權指數收盤，回傳 {iso_date: close}。容忍民國/西元日期、
+       以欄位關鍵字定位『收盤指數』。結果快取於 _TAIEX_CACHE。"""
+    if yyyymm in _TAIEX_CACHE:
+        return _TAIEX_CACHE[yyyymm]
+    r = http_get(TWSE_TAIEX_URL, params={"date": yyyymm + "01", "response": "json"})
+    out = {}
+    if r:
+        try:
+            j = r.json()
+            fields = j.get("fields", [])
+            c_date = next((i for i, f in enumerate(fields) if "日期" in f), 0)
+            c_close = next((i for i, f in enumerate(fields) if "收盤" in f), -1)
+            if c_close < 0:
+                c_close = len(fields) - 1          # 後備：通常收盤在最後一欄
+            for row in j.get("data", []):
+                iso = _norm_roc_date(row[c_date])
+                if iso:
+                    out[iso] = to_float(row[c_close])
+        except Exception as e:                       # noqa: BLE001
+            log(f"  加權指數解析失敗：{e}")
+    _TAIEX_CACHE[yyyymm] = out
+    return out
+
+
+def fetch_taiex_close(date_obj):
+    """取得指定日的加權指數收盤（元/點），無資料回 None"""
+    month = fetch_taiex_month(date_obj.strftime("%Y%m"))
+    return month.get(date_obj.isoformat())
+
+
 # ───────────────────────────────────────────────────────────────────
 #  歷史儲存 + 指標計算
 # ───────────────────────────────────────────────────────────────────
@@ -287,7 +341,7 @@ def zscore(series, value):
     return (value - mean) / sd
 
 
-def compute_record(date_iso, spot, tx, ssf, opt, history=None):
+def compute_record(date_iso, spot, tx, ssf, opt, taiex=None, history=None):
     """組裝單日「原始 + 當日」欄位（不含跨日 Δ / E_Total / Z-Score，
        那些由 recompute_derived 以完整歷史統一重算，避免插入順序造成錯誤）。"""
     rec = {
@@ -295,6 +349,7 @@ def compute_record(date_iso, spot, tx, ssf, opt, history=None):
         "spot_net": spot,                 # 現貨買賣超（元）
         "tx_oi_amount": tx,               # 大台未平倉淨額金額（元）
         "ssf_oi_amount": ssf,             # 股票期貨未平倉淨額金額（元）
+        "taiex_close": taiex,             # 加權指數收盤（點）
     }
     # ── 模組二：選擇權（皆為當日欄位）──
     if opt:
@@ -353,6 +408,7 @@ def build_mock_history(n=80):
     hist = []
     tx = 1.8e11
     ssf = 4.0e10
+    taiex = 21800.0
     base = dt.date(2026, 2, 17)
     d = base
     for i in range(n):
@@ -361,6 +417,7 @@ def build_mock_history(n=80):
         spot = random.gauss(0, 1) * 1.2e10
         tx += random.gauss(0, 1) * 6e9
         ssf += random.gauss(0, 1) * 2e9
+        taiex += random.gauss(15 if i < n * 0.7 else -45, 1) * 1.3 + random.gauss(0, 1) * 70
         call_oi = random.uniform(8.0e3, 1.4e4)
         put_oi = random.uniform(3.0e4, 5.0e4)
         p_call = random.uniform(3800, 5200)      # 外資深價內合成多單，平均單價偏高
@@ -371,7 +428,7 @@ def build_mock_history(n=80):
         if 55 <= i <= 63:
             put_amt *= 1.6
         opt = {"call": [call_oi, call_amt], "put": [put_oi, put_amt]}
-        rec = compute_record(d.isoformat(), spot, tx, ssf, opt, hist)
+        rec = compute_record(d.isoformat(), spot, tx, ssf, opt, round(taiex, 2))
         hist = upsert(hist, rec)
         d += dt.timedelta(days=1)
     return {"history": hist}
@@ -417,6 +474,7 @@ def render_html(hist):
         "p_put": [round(r.get("p_avg_put"), 1) if r.get("p_avg_put") else None for r in history],
         "ratio": [round(r.get("amount_ratio"), 3) if r.get("amount_ratio") else None for r in history],
         "ratio_z": [round(r.get("amount_ratio_z"), 2) if r.get("amount_ratio_z") is not None else None for r in history],
+        "taiex": [round(r.get("taiex_close"), 2) if r.get("taiex_close") else None for r in history],
         "thr_otm": P_AVG_OTM_HEDGE,
         "thr_dir": P_AVG_DIRECTIONAL,
     }
@@ -458,28 +516,30 @@ HTML_TEMPLATE = ""   # placeholder，實際內容在 _load_template() 注入
 #  主流程
 # ───────────────────────────────────────────────────────────────────
 def fetch_one_day(date_obj):
-    """抓取單一日期的三來源原始值，回傳 (spot, tx, ssf, opt)"""
+    """抓取單一日期的來源原始值，回傳 (spot, tx, ssf, opt, taiex)"""
     ymd = date_obj.strftime("%Y%m%d")
     slash = date_obj.strftime("%Y/%m/%d")
     spot = fetch_spot_net(ymd)
     tx, ssf = fetch_futures(slash)
     opt = fetch_options(slash)
-    return spot, tx, ssf, opt
+    taiex = fetch_taiex_close(date_obj)
+    return spot, tx, ssf, opt, taiex
 
 
 def run_single(date_obj):
     """抓一天、更新歷史、重產 HTML"""
     iso = date_obj.isoformat()
     log(f"開始抓取 {iso}")
-    spot, tx, ssf, opt = fetch_one_day(date_obj)
+    spot, tx, ssf, opt, taiex = fetch_one_day(date_obj)
     log(f"  現貨買賣超：{spot}")
     log(f"  大台未平倉金額：{tx}　股票期貨：{ssf}")
     log(f"  選擇權：{opt}")
+    log(f"  加權指數：{taiex}")
     if spot is None and tx is None and opt is None:
         log("三個來源皆無資料，視為非交易日，結束（不更新）")
         return
     hist = load_history()
-    rec = compute_record(iso, spot, tx, ssf, opt)
+    rec = compute_record(iso, spot, tx, ssf, opt, taiex)
     hist["history"] = upsert(hist["history"], rec)
     recompute_derived(hist["history"])       # 統一重算跨日欄位
     save_history(hist)
@@ -500,12 +560,12 @@ def run_backfill(start_ymd, end_ymd):
         if d.weekday() >= 5:                 # 跳過週末
             d += dt.timedelta(days=1)
             continue
-        spot, tx, ssf, opt = fetch_one_day(d)
+        spot, tx, ssf, opt, taiex = fetch_one_day(d)
         if spot is None and tx is None and opt is None:
             log(f"  {d} 無資料（假日/未公布），略過")
             skip += 1
         else:
-            rec = compute_record(d.isoformat(), spot, tx, ssf, opt)
+            rec = compute_record(d.isoformat(), spot, tx, ssf, opt, taiex)
             hist["history"] = upsert(hist["history"], rec)
             ok += 1
             log(f"  {d}　金額比={rec.get('amount_ratio')}　共 {len(hist['history'])} 筆")
@@ -519,7 +579,7 @@ def run_backfill(start_ymd, end_ymd):
 
 
 def run_inspect(date_obj):
-    """傾印 TAIFEX 原始 CSV 表頭與前幾列，用來校對欄位比對關鍵字（除錯用）"""
+    """傾印 TAIFEX CSV 與 TWSE 加權指數原始回應，用來校對欄位（除錯用）"""
     slash = date_obj.strftime("%Y/%m/%d")
     for label, url, cid in [("期貨", TAIFEX_FUT_URL, ""),
                             ("選擇權", TAIFEX_OPT_URL, "TXO")]:
@@ -533,6 +593,21 @@ def run_inspect(date_obj):
         rows = list(csv.reader(StringIO(text)))
         for i, row in enumerate(rows[:6]):
             print(f"  [{i}] {row}")
+
+    # TWSE 加權指數（MI_5MINS_HIST，回傳當月每日開高低收 JSON）
+    ym = date_obj.strftime("%Y%m01")
+    log(f"===== 加權指數 原始 JSON（{ym} 當月）=====")
+    r = http_get(TWSE_TAIEX_URL, params={"date": ym, "response": "json"})
+    if r:
+        try:
+            j = r.json()
+            print("  fields:", j.get("fields"))
+            for i, row in enumerate(j.get("data", [])[:4]):
+                print(f"  data[{i}] {row}")
+        except Exception as e:                       # noqa: BLE001
+            print("  解析失敗：", e, " 原始前 300 字：", r.text[:300])
+    else:
+        log("  抓取失敗")
 
 
 def main():
@@ -666,6 +741,12 @@ _TEMPLATE = r"""<!DOCTYPE html>
   </div>
 
   <div class="panel">
+    <div class="ptitle"><span class="tag">籌碼背離</span>E_Total 累積　vs　加權指數
+      <span class="hint">左軸：加權指數 點　右軸：E_Total 累積 億</span></div>
+    <div id="c1b" class="chart"></div>
+  </div>
+
+  <div class="panel">
     <div class="ptitle"><span class="tag">模組二A</span>選擇權平均單價 — 部位意圖
       <span class="hint">賣權左軸·買權右軸　＞150 價內　＜20 價外避險</span></div>
     <div id="c2" class="chart"></div>
@@ -716,6 +797,28 @@ echarts.init(document.getElementById('c1'),'dark',{renderer:'canvas'}).setOption
      lineStyle:{width:2,color:'#40a9ff'}, z:5}
   ]
 });
+
+// ── 籌碼背離：E_Total 累積(右軸) vs 加權指數(左軸) ──
+(function(){
+  let acc=0; const cum=D.e_total.map(v=>{acc+=(v||0);return Math.round(acc);});
+  echarts.init(document.getElementById('c1b'),'dark',{renderer:'canvas'}).setOption({
+    backgroundColor:'transparent', tooltip:tip(), legend:{top:0,textStyle:{color:SUB},
+      data:['加權指數','E_Total 累積']},
+    grid:baseGrid, dataZoom:dataZoom,
+    xAxis:{type:'category', data:D.dates, ...axisCommon},
+    yAxis:[
+      {type:'value', name:'加權指數', scale:true, nameTextStyle:{color:SUB}, ...axisCommon},
+      {type:'value', name:'累積·億', position:'right', nameTextStyle:{color:SUB},
+       axisLine:{lineStyle:{color:AX}}, axisLabel:{color:SUB,fontSize:11}, splitLine:{show:false}}
+    ],
+    series:[
+      {name:'加權指數', type:'line', data:D.taiex, smooth:true, symbol:'none',
+       connectNulls:true, lineStyle:{width:2.2,color:'#e6e9f0'}},
+      {name:'E_Total 累積', type:'line', yAxisIndex:1, data:cum, smooth:true, symbol:'none',
+       lineStyle:{width:2.6,color:'#ffd666'}, areaStyle:{color:'rgba(255,214,102,.07)'}}
+    ]
+  });
+})();
 
 // ── 模組二A：買權(右軸)/賣權(左軸) 平均單價，門檻線放賣權軸 ──
 echarts.init(document.getElementById('c2'),'dark',{renderer:'canvas'}).setOption({
