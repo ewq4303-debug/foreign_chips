@@ -1348,6 +1348,25 @@
       "delta_ssf": -3999808000.0,
       "e_total": -48573591338.0,
       "amount_ratio_z": -0.09973141596824624
+    },
+    {
+      "date": "2026-06-12",
+      "spot_net": null,
+      "tx_oi_amount": 0.0,
+      "ssf_oi_amount": 0.0,
+      "taiex_close": 44169.04,
+      "call_oi": 0.0,
+      "call_amt": 0.0,
+      "put_oi": 0.0,
+      "put_amt": 0.0,
+      "p_avg_call": null,
+      "p_avg_put": null,
+      "amount_ratio": null,
+      "contract_ratio": null,
+      "delta_tx": 546236057000.0,
+      "delta_ssf": 265699873000.0,
+      "e_total": 811935930000.0,
+      "amount_ratio_z": null
     }
   ]
 }
