@@ -41,11 +41,19 @@ jobs:
             python foreign_chips.py
           fi
 
+      - name: Compute reversal signals
+        # 在外資籌碼 JSON 產出後，計算「轉折確認」訊號燈（門檻全走環境變數）
+        env:
+          REV_Z_EXTREME: "2.0"
+          REV_CUM_FLAT_EPS: "5.0"
+          REV_ETOTAL_WARN: "-500"
+        run: python -m signals.reversal_signals
+
       - name: Commit results
         run: |
           git config user.name  "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add data/history.json docs/index.html
+          git add data/history.json docs/index.html docs/data/reversal_signals.json
           if git diff --staged --quiet; then
             echo "無變更（可能為非交易日）"
           else

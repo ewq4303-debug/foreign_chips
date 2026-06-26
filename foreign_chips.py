@@ -700,10 +700,44 @@ _TEMPLATE = r"""<!DOCTYPE html>
   .ptitle .hint{color:var(--sub);font-size:11px;font-weight:400;margin-left:auto}
   .chart{width:100%;height:300px}
   footer{color:var(--sub);font-size:11px;text-align:center;margin-top:18px;line-height:1.8}
+  /* ── 轉折確認訊號燈面板 ── */
+  .rv-panel{background:var(--panel);border:1px solid var(--line);
+            border-radius:14px;padding:14px 14px 12px;margin-bottom:14px}
+  .rv-head{display:flex;align-items:center;gap:8px;margin:0 2px 12px;flex-wrap:wrap}
+  .rv-tag{font-size:11px;color:var(--accent);border:1px solid var(--accent);
+          border-radius:6px;padding:1px 6px;opacity:.85}
+  .rv-title{font-size:14px}
+  .rv-hint{color:var(--sub);font-size:11px;margin-left:auto}
+  .rv-main{display:flex;align-items:center;gap:14px;background:var(--panel2);
+           border:1px solid var(--line);border-radius:12px;padding:14px 16px;margin-bottom:12px}
+  .rv-bigdot{width:22px;height:22px;border-radius:50%;flex:none}
+  .rv-maintext{display:flex;flex-direction:column;gap:3px}
+  .rv-maintext b{font-size:17px}
+  .rv-blurb{color:var(--sub);font-size:12px}
+  .rv-score{margin-left:auto;text-align:right}
+  .rv-scoreval{font-size:20px;font-weight:600;font-variant-numeric:tabular-nums}
+  .rv-scorelab{color:var(--sub);font-size:11px}
+  .rv-row{display:flex;align-items:center;gap:10px;padding:9px 4px;flex-wrap:wrap;
+          border-top:1px solid var(--line)}
+  .rv-row:first-of-type{border-top:none}
+  .rv-rowlab{color:var(--sub);font-size:12px;min-width:104px}
+  .rv-lamps{display:flex;gap:14px;flex-wrap:wrap;flex:1}
+  .rv-lamp{display:flex;align-items:center;gap:6px;cursor:default}
+  .rv-dot{width:11px;height:11px;border-radius:50%;flex:none}
+  .rv-lab{font-size:12px;color:var(--txt)}
+  .rv-rowtail{color:var(--sub);font-size:12px;font-variant-numeric:tabular-nums;
+              margin-left:auto}
+  .rv-stock{background:var(--panel2);border:1px solid var(--accent);
+            border-radius:10px;margin:4px 0;padding:9px 10px}
+  .rv-stock.rv-row{border-top:none}
+  .rv-gate{color:var(--sub)}
+  .rv-foot{color:var(--sub);font-size:11px;margin-top:8px;text-align:right}
+  .rv-err{color:var(--up);font-size:12px;padding:6px 4px}
   @media(max-width:560px){
     .cards{grid-template-columns:repeat(2,1fr)}
     .chart{height:260px}
     h1{font-size:17px}
+    .rv-rowlab{min-width:100%}
   }
 </style>
 </head>
@@ -757,6 +791,9 @@ _TEMPLATE = r"""<!DOCTYPE html>
       <span class="hint">±2σ 外＝極端區</span></div>
     <div id="c3" class="chart"></div>
   </div>
+
+  <!-- 轉折確認訊號燈（後端 signals/reversal_signals.py → data/reversal_signals.json） -->
+  <div id="reversal-panel" class="rv-panel"></div>
 
   <footer>
     資料來源：TWSE 證交所、TAIFEX 期交所（官方公開資料，每日約 15:00 後更新）<br>
@@ -886,6 +923,7 @@ window.addEventListener('resize',()=>{
     const i=echarts.getInstanceByDom(c); if(i)i.resize();});
 });
 </script>
+<script src="reversal_panel.js"></script>
 </body>
 </html>"""
 
