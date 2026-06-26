@@ -10,6 +10,25 @@
 | 二A | 平均單價 `P_Avg` = 未平倉金額 / 口數 / 50 | 判斷選擇權是價外避險或價內攻擊 |
 | 二B | 金額比 `Put金額/Call金額` 的 60 日 Z-Score | 偵測極端貪婪／恐慌轉折點 |
 
+## 轉折確認訊號燈（`signals/reversal_signals.py`）
+在儀表板尾端新增一個**確定性、可回放、門檻可調**的燈號，把「恐慌會持續還是
+開始轉折」量化為四種 verdict：🔴 恐慌持續 / 🟡 醞釀反彈 / 🟢 確認轉折 / ⚪ 中性。
+
+核心規則：**真正的「轉折」必須流量(flow) + 存量(stock) 同時成立**。
+- 流量端（會均值回歸）：S1 Z 退出極端、S2 Put/Call 反折、S3 賣權溢價收斂、S5 現貨轉買/急縮。
+- 存量端（守門員 ⭐）：S4 累積 E_Total 斜率翻揚 —— 沒有 S4，最高只能到 🟡。
+- 持續警告：W1 Z 續創新高、W2 真出貨、W3 期貨翻空。
+
+本模組**不重抓資料**，只讀 `data/history.json`（adapter 見檔內 `load_series()`），
+輸出 `docs/data/reversal_signals.json`，前端由 `docs/reversal_panel.js` 渲染成燈號面板
+（純 DOM + CSS，不需 ECharts）。所有門檻只走環境變數（`REV_*`，見檔內 `CFG`），
+方便在 Actions 直接調參回測。
+
+```bash
+python -m signals.reversal_signals             # 讀 history.json → 產生 JSON
+python -m signals.reversal_signals --selftest  # 驗收自測（🔴 現況 + 🟢/🟡 反向情境）
+```
+
 ## 資料來源網址與驗證方式
 
 三個來源網址集中定義在 `foreign_chips.py` 上方設定區（`*_URL` 常數）。
