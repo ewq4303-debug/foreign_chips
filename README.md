@@ -29,6 +29,24 @@ python -m signals.reversal_signals             # 讀 history.json → 產生 JSO
 python -m signals.reversal_signals --selftest  # 驗收自測（🔴 現況 + 🟢/🟡 反向情境）
 ```
 
+
+## 轉折訊號回測（`signals/backtest.py`）
+
+依照轉折確認模組的規則逐日 walk-forward 回放：每個交易日只使用當日以前資料計算 verdict，
+再用未來加權指數報酬評估訊號表現。預設輸出 JSON 報告到 `docs/data/backtest_report.json`，
+也可額外輸出每日事件 CSV。
+
+```bash
+python -m signals.backtest --horizon 5
+python -m signals.backtest --horizon 5 --csv docs/data/backtest_events.csv
+python -m signals.backtest --scan --z-extreme 1.8,2.0,2.2 --flow-min 2,3
+```
+
+報告內容包含：
+- 每日事件列：日期、verdict、flow score、stock/warning 狀態、未來報酬、最大有利/不利變動。
+- 燈號摘要：各 verdict 的出現次數、勝率、平均/中位數未來報酬、平均最大有利/不利變動。
+- 參數掃描：針對 `REV_Z_EXTREME`、`REV_Z_EXIT`、`REV_FLOW_MIN`、`REV_CUM_FLAT_EPS`、`REV_ETOTAL_WARN` 做組合排序。
+
 ## 資料來源網址與驗證方式
 
 三個來源網址集中定義在 `foreign_chips.py` 上方設定區（`*_URL` 常數）。
