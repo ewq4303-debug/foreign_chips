@@ -1,8 +1,8 @@
 {
-  "data_date": "2026-07-02",
-  "updated_at": "2026-07-02T19:25:37.711213+08:00",
+  "data_date": "2026-07-03",
+  "updated_at": "2026-07-03T19:24:25.605602+08:00",
   "insufficient_data": false,
-  "aligned_n": 361,
+  "aligned_n": 362,
   "verdict": {
     "code": "PANIC_CONTINUES",
     "label": "恐慌持續",
@@ -15,44 +15,44 @@
   "signals": {
     "S1_zscore_exit": {
       "triggered": false,
-      "value": 1.45,
+      "value": 0.99,
       "threshold": 2.0,
       "bucket": "flow",
-      "detail": "Z=1.45 未轉弱（斜率未翻負）"
+      "detail": "Z=0.99 未轉弱（斜率未翻負）"
     },
     "S2_pc_reversal": {
       "triggered": false,
-      "value": 0.86,
+      "value": 0.68,
       "threshold": null,
       "bucket": "flow",
       "detail": "Put/Call 仍在高檔，未見反折"
     },
     "S3_premium_cross": {
       "triggered": false,
-      "value": -893.66,
+      "value": -1272.38,
       "threshold": 0,
       "bucket": "flow",
       "detail": "賣權溢價未明確收斂"
     },
     "S5_spot_turn": {
       "triggered": false,
-      "value": -890.47,
+      "value": -777.83,
       "threshold": null,
       "bucket": "flow",
-      "detail": "現貨大幅賣超（-890.47 億），未轉買亦未急縮"
+      "detail": "現貨大幅賣超（-777.83 億），未轉買亦未急縮"
     },
     "S4_cum_turnup": {
       "triggered": false,
-      "value": -2265.57,
+      "value": -2785.73,
       "threshold": 0,
       "bucket": "stock",
-      "detail": "累積 E_Total 仍下行（-2265.57 億，守門員未過）"
+      "detail": "累積 E_Total 仍下行（-2785.73 億，守門員未過）"
     }
   },
   "warnings": {
     "W1_zscore_newhigh": {
       "triggered": false,
-      "value": 1.45,
+      "value": 0.99,
       "threshold": 2.0,
       "detail": "Z-Score 未創新高"
     },
@@ -64,7 +64,7 @@
     },
     "W3_futures_flip": {
       "triggered": true,
-      "value": -880.84,
+      "value": -628.52,
       "threshold": -500.0,
       "detail": "當日 E_Total 大幅翻空，期貨不再偏多對沖"
     }
