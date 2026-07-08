@@ -1,8 +1,8 @@
 {
-  "data_date": "2026-07-07",
-  "updated_at": "2026-07-07T19:36:38.687797+08:00",
+  "data_date": "2026-07-08",
+  "updated_at": "2026-07-08T18:53:27.398771+08:00",
   "insufficient_data": false,
-  "aligned_n": 364,
+  "aligned_n": 365,
   "verdict": {
     "code": "PANIC_CONTINUES",
     "label": "恐慌持續",
@@ -10,51 +10,51 @@
     "flow_score": 0,
     "flow_max": 4,
     "stock_confirmed": false,
-    "warning_active": true
+    "warning_active": false
   },
   "signals": {
     "S1_zscore_exit": {
       "triggered": false,
-      "value": 3.63,
+      "value": 2.83,
       "threshold": 2.0,
       "bucket": "flow",
-      "detail": "Z=3.63 仍在極端區，未洩壓"
+      "detail": "Z=2.83 仍在極端區，未洩壓"
     },
     "S2_pc_reversal": {
       "triggered": false,
-      "value": 1.71,
+      "value": 1.54,
       "threshold": null,
       "bucket": "flow",
       "detail": "Put/Call 仍在高檔，未見反折"
     },
     "S3_premium_cross": {
       "triggered": false,
-      "value": -320.87,
+      "value": -377.28,
       "threshold": 0,
       "bucket": "flow",
       "detail": "賣權溢價未明確收斂"
     },
     "S5_spot_turn": {
       "triggered": false,
-      "value": -547.31,
+      "value": -379.49,
       "threshold": null,
       "bucket": "flow",
-      "detail": "現貨大幅賣超（-547.31 億），未轉買亦未急縮"
+      "detail": "現貨大幅賣超（-379.49 億），未轉買亦未急縮"
     },
     "S4_cum_turnup": {
       "triggered": false,
-      "value": -1444.01,
+      "value": -2008.94,
       "threshold": 0,
       "bucket": "stock",
-      "detail": "累積 E_Total 仍下行（-1444.01 億，守門員未過）"
+      "detail": "累積 E_Total 仍下行（-2008.94 億，守門員未過）"
     }
   },
   "warnings": {
     "W1_zscore_newhigh": {
-      "triggered": true,
-      "value": 3.63,
+      "triggered": false,
+      "value": 2.83,
       "threshold": 2.0,
-      "detail": "Z-Score 逼近/突破期間新高，恐慌續強"
+      "detail": "Z-Score 未創新高"
     },
     "W2_real_distribution": {
       "triggered": false,
@@ -64,7 +64,7 @@
     },
     "W3_futures_flip": {
       "triggered": false,
-      "value": 64.35,
+      "value": -482.45,
       "threshold": -500.0,
       "detail": "當日 E_Total 仍由期貨偏多對沖"
     }
