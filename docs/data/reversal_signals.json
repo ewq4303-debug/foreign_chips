@@ -1,6 +1,6 @@
 {
   "data_date": "2026-07-13",
-  "updated_at": "2026-07-13T16:06:58.360031+08:00",
+  "updated_at": "2026-07-13T19:49:47.572399+08:00",
   "insufficient_data": false,
   "aligned_n": 367,
   "verdict": {
@@ -36,17 +36,17 @@
     },
     "S5_spot_turn": {
       "triggered": true,
-      "value": -195.77,
+      "value": -195.6,
       "threshold": null,
       "bucket": "flow",
-      "detail": "現貨賣超急縮（今日 -195.77 億）"
+      "detail": "現貨賣超急縮（今日 -195.6 億）"
     },
     "S4_cum_turnup": {
       "triggered": false,
-      "value": -1182.92,
+      "value": -1182.75,
       "threshold": 0,
       "bucket": "stock",
-      "detail": "累積 E_Total 仍下行（-1182.92 億，守門員未過）"
+      "detail": "累積 E_Total 仍下行（-1182.75 億，守門員未過）"
     }
   },
   "warnings": {
@@ -64,7 +64,7 @@
     },
     "W3_futures_flip": {
       "triggered": false,
-      "value": -183.07,
+      "value": -182.9,
       "threshold": -500.0,
       "detail": "當日 E_Total 仍由期貨偏多對沖"
     }
