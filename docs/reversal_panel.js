@@ -18,6 +18,9 @@
     W2_real_distribution: "W2 真出貨",
     W3_futures_flip: "W3 期貨翻空",
   };
+  const CONTEXT_LABEL = {
+    C1_tpex_confirm: "C1 上櫃外資同步",
+  };
   const VERDICT_BLURB = {
     PANIC_CONTINUES: "警告訊號主導、結構未轉，恐慌延續中。",
     BOUNCE_BREWING: "流量情緒鬆動，但累積結構未翻，反彈僅供觀察。",
@@ -68,8 +71,13 @@
     main.appendChild(big);
     const txt = el("div", "rv-maintext");
     const label = insufficient ? "資料不足" : (v.label || "—");
+    // Context C1 加分：confidence >= 1 時在 verdict label 後綴 ⭑(+1)
+    const conf = (!insufficient && v.confidence) ? v.confidence : 0;
+    const confSuffix = conf > 0
+      ? " <span style='color:#36cfc9;font-size:13px' title='C1 上櫃外資同步確認'>⭑(+" + conf + ")</span>"
+      : "";
     txt.appendChild(el("b", null,
-      "<span style='color:" + (insufficient ? C.grey : color) + "'>" + label + "</span>"));
+      "<span style='color:" + (insufficient ? C.grey : color) + "'>" + label + "</span>" + confSuffix));
     const blurb = insufficient
       ? "有效樣本不足，主燈轉灰。"
       : (VERDICT_BLURB[v.code] || "");
@@ -120,6 +128,20 @@
     });
     warnRow.appendChild(warnLamps);
     root.appendChild(warnRow);
+
+    // Context 列（C1：加分不否決，只影響 confidence）
+    const ctxRow = el("div", "rv-row");
+    ctxRow.appendChild(el("div", "rv-rowlab", "Context 加分"));
+    const ctxLamps = el("div", "rv-lamps");
+    Object.keys(CONTEXT_LABEL).forEach(function (k) {
+      const s = sig[k] || {};
+      ctxLamps.appendChild(lamp(s.triggered, "#36cfc9", CONTEXT_LABEL[k], s.detail));
+    });
+    ctxRow.appendChild(ctxLamps);
+    const c1 = sig.C1_tpex_confirm || {};
+    ctxRow.appendChild(el("div", "rv-rowtail",
+      c1.insufficient ? "上櫃資料不足" : ("confidence +" + conf)));
+    root.appendChild(ctxRow);
 
     if (r.updated_at) {
       root.appendChild(el("div", "rv-foot",

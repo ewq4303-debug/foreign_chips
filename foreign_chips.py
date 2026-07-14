@@ -70,6 +70,16 @@ TAIFEX_OPT_URL = "https://www.taifex.com.tw/cht/3/callsAndPutsDateDown"
 TWSE_BFI_URL = "https://www.twse.com.tw/rwd/zh/fund/BFI82U"
 # TWSE 發行量加權股價指數歷史（每月一檔，含每日開高低收）
 TWSE_TAIEX_URL = "https://www.twse.com.tw/rwd/zh/TAIEX/MI_5MINS_HIST"
+# TPEx 上櫃三大法人買賣金額彙總（新版 RWD 網站 JSON；候選 A，
+# 端點驗證流程與陷阱結論見 docs/NOTES_tpex_endpoint.md，用 --inspect-tpex 實測）
+TPEX_INSTI_URL = "https://www.tpex.org.tw/www/zh-tw/insti/summary"
+
+# ── Context：上櫃（TPEx）外資買賣超 ──
+# 金額欄位換算為「元」的乘數：TPEx 人類版彙總頁表尾註記「單位：元」→ 預設 1.0；
+# 若 --inspect-tpex 實測為千元欄，改為 1000.0（不得憑記憶假設與 TWSE 相同）
+TPEX_AMOUNT_MULT = 1.0
+TPEX_CUM_WINDOW = 20        # 上櫃買賣超滾動累積視窗（交易日）
+TPEX_MIN_SAMPLE = 15        # 累積視窗內最低有效樣本數，不足 → cum 為 None
 
 
 # ───────────────────────────────────────────────────────────────────
@@ -159,6 +169,69 @@ def fetch_spot_net(date_yyyymmdd):
     except Exception as e:                           # noqa: BLE001
         log(f"  TWSE 解析失敗：{e}")
         return None
+
+
+def _to_tpex_date(date_yyyymmdd):
+    """西元 YYYYMMDD → TPEx 慣用民國日期 'YYY/MM/DD'。
+    例：'20260714' → '115/07/14'、'20250102' → '114/01/02'"""
+    d = dt.datetime.strptime(str(date_yyyymmdd), "%Y%m%d").date()
+    return f"{d.year - 1911}/{d.month:02d}/{d.day:02d}"
+
+
+def _parse_tpex_insti(j):
+    """從 TPEx 三大法人彙總 JSON 取出「外資買賣差額合計」（原始單位，未換算）。
+    口徑對齊 fetch_spot_net()：外資及陸資 + 外資自營商 之買賣差額合計；
+    若表內已有外資「合計」列則直接採用，避免與子項重複加總。解析失敗回 None。"""
+    if not isinstance(j, dict):
+        return None
+    tables = j.get("tables")
+    if not isinstance(tables, list) or not tables:
+        tables = [j]                                 # 後備：頂層直接帶 fields/data
+    for t in tables:
+        if not isinstance(t, dict):
+            continue
+        fields = [str(f) for f in (t.get("fields") or [])]
+        data = t.get("data") or t.get("aaData") or []
+        if not data:
+            continue
+        c_diff = next((i for i, f in enumerate(fields) if "差額" in f), None)
+        foreign_rows = []
+        for row in data:
+            if not isinstance(row, (list, tuple)) or len(row) < 2:
+                continue
+            name = "".join(str(x) for x in row[:2])  # 單位名稱可能在第 1 或 2 欄
+            if "外資" not in name:
+                continue
+            idx = c_diff if (c_diff is not None and c_diff < len(row)) else len(row) - 1
+            foreign_rows.append((name, to_float(row[idx])))
+        if not foreign_rows:
+            continue
+        totals = [v for n, v in foreign_rows if "合計" in n]
+        if totals:
+            return totals[0]
+        return sum(v for n, v in foreign_rows if "合計" not in n)
+    return None
+
+
+def fetch_spot_net_tpex(date_yyyymmdd):
+    """Context：上櫃（TPEx）外資買賣超總金額（元）。介面與回傳語意比照
+    fetch_spot_net()：非交易日 / 未公布 / 解析失敗回 None 並 log()。
+    日期參數先試民國格式（TPEx 慣用），無資料再退回西元格式。"""
+    slash = dt.datetime.strptime(str(date_yyyymmdd), "%Y%m%d").strftime("%Y/%m/%d")
+    for date_str in (_to_tpex_date(date_yyyymmdd), slash):
+        params = {"type": "Daily", "date": date_str, "response": "json"}
+        r = http_get(TPEX_INSTI_URL, params=params)
+        if not r:
+            continue
+        try:
+            val = _parse_tpex_insti(r.json())
+        except ValueError as e:
+            log(f"  TPEx 回應非 JSON：{e}")
+            continue
+        if val is not None:
+            return val * TPEX_AMOUNT_MULT            # 統一換算為「元」
+    log("  TPEx：當日無資料（可能非交易日或尚未公布）")
+    return None
 
 
 def _parse_taifex_fut(text):
@@ -341,7 +414,8 @@ def zscore(series, value):
     return (value - mean) / sd
 
 
-def compute_record(date_iso, spot, tx, ssf, opt, taiex=None, history=None):
+def compute_record(date_iso, spot, tx, ssf, opt, taiex=None, history=None,
+                   spot_tpex=None):
     """組裝單日「原始 + 當日」欄位（不含跨日 Δ / E_Total / Z-Score，
        那些由 recompute_derived 以完整歷史統一重算，避免插入順序造成錯誤）。"""
     rec = {
@@ -350,6 +424,7 @@ def compute_record(date_iso, spot, tx, ssf, opt, taiex=None, history=None):
         "tx_oi_amount": tx,               # 大台未平倉淨額金額（元）
         "ssf_oi_amount": ssf,             # 股票期貨未平倉淨額金額（元）
         "taiex_close": taiex,             # 加權指數收盤（點）
+        "spot_net_tpex": spot_tpex,       # 上櫃外資買賣超（元）；無資料 = None
     }
     # ── 模組二：選擇權（皆為當日欄位）──
     if opt:
@@ -373,6 +448,8 @@ def recompute_derived(history):
        金額比 Z-Score）。與資料插入順序無關，可重複呼叫（冪等）。"""
     history.sort(key=lambda r: r["date"])
     ar_series = []                                   # 逐日累積金額比，供 Z-Score
+    tpex_vals = []                                   # 上櫃買賣超（與 history 對齊，含 None）
+    tpex_z_series = []                               # 上櫃買賣超有效值序列，供 Z-Score
     for i, rec in enumerate(history):
         prev = history[i - 1] if i > 0 else {}
         tx, ssf = rec.get("tx_oi_amount"), rec.get("ssf_oi_amount")
@@ -388,6 +465,17 @@ def recompute_derived(history):
         rec["amount_ratio_z"] = zscore(ar_series, ar) if ar is not None else None
         if ar is not None:                           # Z 以「之前」的天數為基準
             ar_series.append(ar)
+        # ── Context：上櫃外資買賣超衍生欄位（舊紀錄無此 key，一律 .get，
+        #    None 視為缺值不當 0 參與計算；e_total_broad 純顯示用，不回寫 e_total）──
+        tp = rec.get("spot_net_tpex")
+        tpex_vals.append(tp)
+        window = [v for v in tpex_vals[-TPEX_CUM_WINDOW:] if v is not None]
+        rec["spot_net_tpex_cum20"] = (
+            sum(window) if len(window) >= TPEX_MIN_SAMPLE else None)
+        rec["spot_net_tpex_z"] = zscore(tpex_z_series, tp) if tp is not None else None
+        if tp is not None:                           # Z 以「之前」的天數為基準
+            tpex_z_series.append(tp)
+        rec["e_total_broad"] = rec["e_total"] + (tp or 0.0)
     return history
 
 
@@ -428,7 +516,10 @@ def build_mock_history(n=80):
         if 55 <= i <= 63:
             put_amt *= 1.6
         opt = {"call": [call_oi, call_amt], "put": [put_oi, put_amt]}
-        rec = compute_record(d.isoformat(), spot, tx, ssf, opt, round(taiex, 2))
+        # 上櫃外資買賣超：量級約為 TWSE spot 的 ~1/8
+        spot_tpex = random.gauss(0, 1) * 1.5e9
+        rec = compute_record(d.isoformat(), spot, tx, ssf, opt, round(taiex, 2),
+                             spot_tpex=spot_tpex)
         hist = upsert(hist, rec)
         d += dt.timedelta(days=1)
     return {"history": hist}
@@ -464,12 +555,20 @@ def render_html(hist):
     def col(key, scale=1.0):
         return [round((r.get(key) or 0) / scale, 2) for r in history]
 
+    def coln(key, scale=1.0):
+        """同 col()，但缺值保留 null（圖上留空，不畫成 0）"""
+        return [round(r.get(key) / scale, 2) if r.get(key) is not None else None
+                for r in history]
+
     payload = {
         "dates": [r["date"] for r in history],
         "e_total": col("e_total", 1e8),          # 億元
+        "e_total_broad": col("e_total_broad", 1e8),   # 含上櫃對照線（純顯示用）
         "spot": col("spot_net", 1e8),
         "delta_tx": col("delta_tx", 1e8),
         "delta_ssf": col("delta_ssf", 1e8),
+        "spot_tpex": coln("spot_net_tpex", 1e8),          # 上櫃外資買賣超（億）
+        "spot_tpex_cum20": coln("spot_net_tpex_cum20", 1e8),  # 20 日滾動累積（億）
         "p_call": [round(r.get("p_avg_call"), 1) if r.get("p_avg_call") else None for r in history],
         "p_put": [round(r.get("p_avg_put"), 1) if r.get("p_avg_put") else None for r in history],
         "ratio": [round(r.get("amount_ratio"), 3) if r.get("amount_ratio") else None for r in history],
@@ -486,6 +585,8 @@ def render_html(hist):
         "ratio_z": f"{latest.get('amount_ratio_z'):+.2f}" if latest.get("amount_ratio_z") is not None else "—",
         "p_call": f"{latest.get('p_avg_call'):.0f}" if latest.get("p_avg_call") else "—",
         "p_put": f"{latest.get('p_avg_put'):.0f}" if latest.get("p_avg_put") else "—",
+        "tpex": (f"{latest.get('spot_net_tpex')/1e8:+.1f}"
+                 if latest.get("spot_net_tpex") is not None else "--"),
     }
 
     html = HTML_TEMPLATE
@@ -501,6 +602,7 @@ def render_html(hist):
     html = html.replace("__C_RATIOZ__", cards["ratio_z"])
     html = html.replace("__C_PCALL__", cards["p_call"])
     html = html.replace("__C_PPUT__", cards["p_put"])
+    html = html.replace("__C_TPEX__", cards["tpex"])
 
     os.makedirs(DOCS_DIR, exist_ok=True)
     with open(OUTPUT_HTML, "w", encoding="utf-8") as f:
@@ -516,30 +618,34 @@ HTML_TEMPLATE = ""   # placeholder，實際內容在 _load_template() 注入
 #  主流程
 # ───────────────────────────────────────────────────────────────────
 def fetch_one_day(date_obj):
-    """抓取單一日期的來源原始值，回傳 (spot, tx, ssf, opt, taiex)"""
+    """抓取單一日期的來源原始值，回傳 (spot, tx, ssf, opt, taiex, spot_tpex)"""
     ymd = date_obj.strftime("%Y%m%d")
     slash = date_obj.strftime("%Y/%m/%d")
     spot = fetch_spot_net(ymd)
     tx, ssf = fetch_futures(slash)
     opt = fetch_options(slash)
     taiex = fetch_taiex_close(date_obj)
-    return spot, tx, ssf, opt, taiex
+    spot_tpex = fetch_spot_net_tpex(ymd)
+    return spot, tx, ssf, opt, taiex, spot_tpex
 
 
 def run_single(date_obj):
     """抓一天、更新歷史、重產 HTML"""
     iso = date_obj.isoformat()
     log(f"開始抓取 {iso}")
-    spot, tx, ssf, opt, taiex = fetch_one_day(date_obj)
+    spot, tx, ssf, opt, taiex, spot_tpex = fetch_one_day(date_obj)
     log(f"  現貨買賣超：{spot}")
     log(f"  大台未平倉金額：{tx}　股票期貨：{ssf}")
     log(f"  選擇權：{opt}")
     log(f"  加權指數：{taiex}")
+    log(f"  上櫃外資買賣超：{spot_tpex}")
+    # TPEx 公布時間可能晚於 TWSE：單邊缺值不阻擋當日入庫，
+    # spot_net_tpex 不參與「全 None 才跳過」的判斷（隔日 upsert 自動補齊）
     if spot is None and tx is None and opt is None:
         log("三個來源皆無資料，視為非交易日，結束（不更新）")
         return
     hist = load_history()
-    rec = compute_record(iso, spot, tx, ssf, opt, taiex)
+    rec = compute_record(iso, spot, tx, ssf, opt, taiex, spot_tpex=spot_tpex)
     hist["history"] = upsert(hist["history"], rec)
     recompute_derived(hist["history"])       # 統一重算跨日欄位
     save_history(hist)
@@ -560,12 +666,13 @@ def run_backfill(start_ymd, end_ymd):
         if d.weekday() >= 5:                 # 跳過週末
             d += dt.timedelta(days=1)
             continue
-        spot, tx, ssf, opt, taiex = fetch_one_day(d)
+        spot, tx, ssf, opt, taiex, spot_tpex = fetch_one_day(d)
         if spot is None and tx is None and opt is None:
             log(f"  {d} 無資料（假日/未公布），略過")
             skip += 1
         else:
-            rec = compute_record(d.isoformat(), spot, tx, ssf, opt, taiex)
+            rec = compute_record(d.isoformat(), spot, tx, ssf, opt, taiex,
+                                 spot_tpex=spot_tpex)
             hist["history"] = upsert(hist["history"], rec)
             ok += 1
             log(f"  {d}　金額比={rec.get('amount_ratio')}　共 {len(hist['history'])} 筆")
@@ -610,6 +717,41 @@ def run_inspect(date_obj):
         log("  抓取失敗")
 
 
+def run_inspect_tpex(date_obj):
+    """Phase 0 端點驗證：傾印 TPEx 三大法人彙總原始回應（民國/西元兩種日期參數
+    都試），列出全欄位與外資列，供與人類版查詢頁逐欄核對單位、日期、欄名。
+    結論記錄於 docs/NOTES_tpex_endpoint.md。"""
+    ymd = date_obj.strftime("%Y%m%d")
+    slash = date_obj.strftime("%Y/%m/%d")
+    for date_str in (_to_tpex_date(ymd), slash):
+        log(f"===== TPEx 三大法人彙總 原始回應（date={date_str}）=====")
+        r = http_get(TPEX_INSTI_URL,
+                     params={"type": "Daily", "date": date_str, "response": "json"})
+        if not r:
+            log("  抓取失敗")
+            continue
+        try:
+            j = r.json()
+        except ValueError:
+            print("  非 JSON，原始前 500 字：", r.text[:500])
+            continue
+        print("  top-level keys:", list(j.keys()) if isinstance(j, dict) else type(j))
+        tables = j.get("tables") if isinstance(j, dict) else None
+        for ti, t in enumerate(tables if isinstance(tables, list) else [j]):
+            if not isinstance(t, dict):
+                continue
+            print(f"  ── table[{ti}] title={t.get('title')!r} date={t.get('date')!r}")
+            print("     fields:", t.get("fields"))
+            for i, row in enumerate((t.get("data") or t.get("aaData") or [])[:12]):
+                print(f"     data[{i}] {row}")
+        parsed = _parse_tpex_insti(j)
+        print(f"  → _parse_tpex_insti 外資合計（原始單位）= {parsed}")
+        if parsed is not None:
+            print(f"  → × TPEX_AMOUNT_MULT({TPEX_AMOUNT_MULT}) = {parsed * TPEX_AMOUNT_MULT} 元")
+            print("  ↑ 請與人類版頁面（櫃買中心 → 上櫃 → 三大法人 → 買賣金額彙總）"
+                  "同日數字核對，確認單位與口徑")
+
+
 def main():
     global HTML_TEMPLATE
     HTML_TEMPLATE = _TEMPLATE
@@ -621,6 +763,8 @@ def main():
                     help="區間回補 YYYYMMDD YYYYMMDD（建議本機執行）")
     ap.add_argument("--inspect", metavar="YYYYMMDD",
                     help="傾印期交所原始 CSV 表頭，用於校對欄位")
+    ap.add_argument("--inspect-tpex", metavar="YYYYMMDD",
+                    help="傾印 TPEx 三大法人彙總原始回應，用於 Phase 0 端點驗證")
     ap.add_argument("--rebuild", action="store_true",
                     help="不抓網路，重算現有 history.json 的跨日欄位並重產 HTML")
     args = ap.parse_args()
@@ -644,6 +788,10 @@ def main():
 
     if args.inspect:
         run_inspect(dt.datetime.strptime(args.inspect, "%Y%m%d").date())
+        return
+
+    if args.inspect_tpex:
+        run_inspect_tpex(dt.datetime.strptime(args.inspect_tpex, "%Y%m%d").date())
         return
 
     if args.backfill:
@@ -766,6 +914,8 @@ _TEMPLATE = r"""<!DOCTYPE html>
       <div class="v">__C_PCALL__<span class="u">點</span></div></div>
     <div class="card"><div class="k">賣權平均單價</div>
       <div class="v">__C_PPUT__<span class="u">點</span></div></div>
+    <div class="card"><div class="k">上櫃外資買賣超</div>
+      <div class="v" id="cv-tpex">__C_TPEX__<span class="u">億</span></div></div>
   </div>
 
   <div class="panel">
@@ -778,6 +928,12 @@ _TEMPLATE = r"""<!DOCTYPE html>
     <div class="ptitle"><span class="tag">籌碼背離</span>E_Total 累積　vs　加權指數
       <span class="hint">左軸：加權指數 點　右軸：E_Total 累積 億</span></div>
     <div id="c1b" class="chart"></div>
+  </div>
+
+  <div class="panel">
+    <div class="ptitle"><span class="tag">Context</span>上櫃外資買賣超（中小型股風險偏好）
+      <span class="hint">bar：每日買賣超　線：20日累積　單位：億元</span></div>
+    <div id="c1t" class="chart"></div>
   </div>
 
   <div class="panel">
@@ -796,7 +952,7 @@ _TEMPLATE = r"""<!DOCTYPE html>
   <div id="reversal-panel" class="rv-panel"></div>
 
   <footer>
-    資料來源：TWSE 證交所、TAIFEX 期交所（官方公開資料，每日約 15:00 後更新）<br>
+    資料來源：TWSE 證交所、TAIFEX 期交所、TPEx 櫃買中心（官方公開資料，每日約 15:00 後更新）<br>
     本儀表板僅供研究參考，不構成投資建議。
   </footer>
 </div>
@@ -819,10 +975,11 @@ function tip(extra){return Object.assign(
   {trigger:'axis', backgroundColor:'#1b2130', borderColor:AX,
    textStyle:{color:TXT,fontSize:12}, axisPointer:{lineStyle:{color:SUB}}}, extra||{});}
 
-// ── 模組一：E_Total 長條 + 堆疊組成 ──
+// ── 模組一：E_Total 長條 + 堆疊組成（e_total_broad 為含上櫃對照線，預設關閉）──
 echarts.init(document.getElementById('c1'),'dark',{renderer:'canvas'}).setOption({
   backgroundColor:'transparent', tooltip:tip(), legend:{top:0,textStyle:{color:SUB},
-    data:['現貨','大台Δ','股期Δ','E_Total']},
+    data:['現貨','大台Δ','股期Δ','E_Total','E_Total 廣義(含上櫃)'],
+    selected:{'E_Total 廣義(含上櫃)':false}},
   grid:baseGrid, dataZoom:dataZoom,
   xAxis:{type:'category', data:D.dates, ...axisCommon},
   yAxis:{type:'value', name:'億', nameTextStyle:{color:SUB}, ...axisCommon},
@@ -831,7 +988,27 @@ echarts.init(document.getElementById('c1'),'dark',{renderer:'canvas'}).setOption
     {name:'大台Δ', type:'bar', stack:'comp', data:D.delta_tx, itemStyle:{color:'#8e54c9'}},
     {name:'股期Δ', type:'bar', stack:'comp', data:D.delta_ssf, itemStyle:{color:'#c98e54'}},
     {name:'E_Total', type:'line', data:D.e_total, smooth:true, symbol:'none',
-     lineStyle:{width:2,color:'#40a9ff'}, z:5}
+     lineStyle:{width:2,color:'#40a9ff'}, z:5},
+    {name:'E_Total 廣義(含上櫃)', type:'line', data:D.e_total_broad, smooth:true,
+     symbol:'none', lineStyle:{width:1.4,color:'#7f9bd1',opacity:.55}, z:4}
+  ]
+});
+
+// ── Context：上櫃外資買賣超 bar + 20 日累積線 ──
+echarts.init(document.getElementById('c1t'),'dark',{renderer:'canvas'}).setOption({
+  backgroundColor:'transparent', tooltip:tip(), legend:{top:0,textStyle:{color:SUB},
+    data:['上櫃買賣超','20日累積']},
+  grid:baseGrid, dataZoom:dataZoom,
+  xAxis:{type:'category', data:D.dates, ...axisCommon},
+  yAxis:[
+    {type:'value', name:'億', nameTextStyle:{color:SUB}, ...axisCommon},
+    {type:'value', name:'累積·億', position:'right', nameTextStyle:{color:SUB},
+     axisLine:{lineStyle:{color:AX}}, axisLabel:{color:SUB,fontSize:11}, splitLine:{show:false}}
+  ],
+  series:[
+    {name:'上櫃買賣超', type:'bar', data:D.spot_tpex, itemStyle:{color:'#36cfc9'}},
+    {name:'20日累積', type:'line', yAxisIndex:1, data:D.spot_tpex_cum20, smooth:true,
+     symbol:'none', connectNulls:true, lineStyle:{width:2,color:'#ffd666'}}
   ]
 });
 
@@ -912,7 +1089,7 @@ echarts.init(document.getElementById('c3'),'dark',{renderer:'canvas'}).setOption
 
 // 卡片漲跌上色
 (function(){
-  [['cv-etotal'],['cv-spot'],['cv-ratioz']].forEach(([id])=>{
+  [['cv-etotal'],['cv-spot'],['cv-ratioz'],['cv-tpex']].forEach(([id])=>{
     const el=document.getElementById(id); if(!el)return;
     const v=parseFloat(el.textContent);
     if(!isNaN(v)) el.classList.add(v>=0?'pos':'neg');

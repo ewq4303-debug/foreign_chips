@@ -8,11 +8,12 @@ on:
         type: choice
         options:
           - inspect
+          - inspect-tpex
           - backfill
           - rebuild
         default: inspect
       start:
-        description: "起始日 YYYYMMDD（inspect 用這天檢視欄位）"
+        description: "起始日 YYYYMMDD（inspect / inspect-tpex 用這天檢視欄位）"
         required: true
         default: "20260605"
       end:
@@ -47,6 +48,8 @@ jobs:
         run: |
           if [ "${{ inputs.mode }}" = "inspect" ]; then
             python foreign_chips.py --inspect "${{ inputs.start }}"
+          elif [ "${{ inputs.mode }}" = "inspect-tpex" ]; then
+            python foreign_chips.py --inspect-tpex "${{ inputs.start }}"
           elif [ "${{ inputs.mode }}" = "rebuild" ]; then
             python foreign_chips.py --rebuild
           else
