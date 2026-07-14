@@ -194,7 +194,9 @@ def _parse_tpex_insti(j):
         data = t.get("data") or t.get("aaData") or []
         if not data:
             continue
-        c_diff = next((i for i, f in enumerate(fields) if "差額" in f), None)
+        # 實測欄名為「買賣超(元)」（TWSE 慣用「買賣差額」），兩種寫法都比對
+        c_diff = next((i for i, f in enumerate(fields)
+                       if "差額" in f or "買賣超" in f), None)
         foreign_rows = []
         for row in data:
             if not isinstance(row, (list, tuple)) or len(row) < 2:
@@ -213,23 +215,54 @@ def _parse_tpex_insti(j):
     return None
 
 
+def _tpex_resp_date_iso(j):
+    """從 TPEx 回應取資料日期並正規化為 ISO（'115/07/14'→'2026-07-14'）。
+    容忍頂層 date / 各 table date、民國緊湊格式（'1150714'）。取不到回 None。"""
+    cand = []
+    if isinstance(j, dict):
+        cand.append(j.get("date"))
+        tables = j.get("tables")
+        for t in (tables if isinstance(tables, list) else []):
+            if isinstance(t, dict):
+                cand.append(t.get("date"))
+    for c in cand:
+        s = str(c or "").strip()
+        if s.isdigit() and len(s) == 7:              # 民國緊湊格式 1150714
+            s = f"{s[:3]}/{s[3:5]}/{s[5:]}"
+        iso = _norm_roc_date(s) if s else None
+        if iso:
+            return iso
+    return None
+
+
 def fetch_spot_net_tpex(date_yyyymmdd):
     """Context：上櫃（TPEx）外資買賣超總金額（元）。介面與回傳語意比照
     fetch_spot_net()：非交易日 / 未公布 / 解析失敗回 None 並 log()。
-    日期參數先試民國格式（TPEx 慣用），無資料再退回西元格式。"""
-    slash = dt.datetime.strptime(str(date_yyyymmdd), "%Y%m%d").strftime("%Y/%m/%d")
-    for date_str in (_to_tpex_date(date_yyyymmdd), slash):
-        params = {"type": "Daily", "date": date_str, "response": "json"}
-        r = http_get(TPEX_INSTI_URL, params=params)
-        if not r:
-            continue
-        try:
-            val = _parse_tpex_insti(r.json())
-        except ValueError as e:
-            log(f"  TPEx 回應非 JSON：{e}")
-            continue
-        if val is not None:
-            return val * TPEX_AMOUNT_MULT            # 統一換算為「元」
+    日期參數採民國格式（Phase 0 實測確認；西元格式伺服器可能忽略參數而
+    回「最新一日」資料，故不做 fallback），並驗證回應資料日＝查詢日，
+    防止假日 / 未公布時把最新一日的數字存到錯的日期。"""
+    iso = dt.datetime.strptime(str(date_yyyymmdd), "%Y%m%d").date().isoformat()
+    params = {"type": "Daily", "date": _to_tpex_date(date_yyyymmdd),
+              "response": "json"}
+    r = http_get(TPEX_INSTI_URL, params=params)
+    if not r:
+        log("  TPEx：抓取失敗")
+        return None
+    try:
+        j = r.json()
+    except ValueError as e:
+        log(f"  TPEx 回應非 JSON：{e}")
+        return None
+    resp_date = _tpex_resp_date_iso(j)
+    if resp_date is not None and resp_date != iso:
+        log(f"  TPEx：回應資料日 {resp_date} ≠ 查詢日 {iso}"
+            "（可能非交易日或尚未公布），視為無資料")
+        return None
+    if resp_date is None:
+        log("  TPEx：回應未帶資料日期，無法核對查詢日（繼續解析，請留意）")
+    val = _parse_tpex_insti(j)
+    if val is not None:
+        return val * TPEX_AMOUNT_MULT                # 統一換算為「元」
     log("  TPEx：當日無資料（可能非交易日或尚未公布）")
     return None
 
@@ -736,6 +769,8 @@ def run_inspect_tpex(date_obj):
             print("  非 JSON，原始前 500 字：", r.text[:500])
             continue
         print("  top-level keys:", list(j.keys()) if isinstance(j, dict) else type(j))
+        print(f"  回應資料日（正規化）= {_tpex_resp_date_iso(j)}　查詢日 = {date_obj.isoformat()}"
+              "　← 兩者不同代表伺服器忽略日期參數回最新一日")
         tables = j.get("tables") if isinstance(j, dict) else None
         for ti, t in enumerate(tables if isinstance(tables, list) else [j]):
             if not isinstance(t, dict):

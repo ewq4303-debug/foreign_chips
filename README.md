@@ -68,7 +68,7 @@ GET 的參數接在網址後，可直接貼瀏覽器看；POST 的參數在請�
 | ① | 現貨 TWSE | GET | `https://www.twse.com.tw/rwd/zh/fund/BFI82U` | `type=day` `dayDate=YYYYMMDD` `response=json` |
 | ② | 期貨 TAIFEX | POST | `https://www.taifex.com.tw/cht/3/futContractsDateDown` | `queryStartDate=YYYY/MM/DD` `queryEndDate=YYYY/MM/DD` `commodityId=`（空＝全部） |
 | ③ | 選擇權 TAIFEX | POST | `https://www.taifex.com.tw/cht/3/callsAndPutsDateDown` | `queryStartDate` `queryEndDate` `commodityId=TXO` |
-| ④ | 上櫃現貨 TPEx | GET | `https://www.tpex.org.tw/www/zh-tw/insti/summary` | `type=Daily` `date=YYY/MM/DD`（民國，備援西元）`response=json`；單位「元」（`TPEX_AMOUNT_MULT`，實測見 NOTES） |
+| ④ | 上櫃現貨 TPEx | GET | `https://www.tpex.org.tw/www/zh-tw/insti/summary` | `type=Daily` `date=YYY/MM/DD`（民國，已實測；含回應日期驗證防呆）`response=json`；單位「元」（實測確認，見 NOTES） |
 
 **對應抓取函式**：① `fetch_spot_net()`、② `fetch_futures()`、③ `fetch_options()`、④ `fetch_spot_net_tpex()`。
 其中 `http_get` / `http_post` 是本檔自訂的小工具，封裝 `requests`，加上重試 3 次、逾時 20 秒、瀏覽器 User-Agent。
