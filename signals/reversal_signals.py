@@ -62,6 +62,8 @@ CFG = {
     "ETOTAL_WARN":   env_f("REV_ETOTAL_WARN", -500.0),# 當日 E_Total 翻空警告線（億）
     "FLOW_MIN":      env_i("REV_FLOW_MIN", 2),        # 升級轉折所需最低流量分數
     "MIN_SAMPLE":    env_i("REV_MIN_SAMPLE", 20),     # 最低有效樣本數
+    "TPEX_ALIGN_N":  env_i("REV_TPEX_ALIGN_N", 2),    # C1 上櫃同步淨買的回看天數
+    "TPEX_MIN_SAMPLE": env_i("REV_TPEX_MIN_SAMPLE", 20),  # C1 生效所需 spot_net_tpex 最低有效樣本數
 }
 
 
@@ -132,8 +134,10 @@ def mean(values):
 #    cum_etotal   ← Σ e_total（億）       （籌碼背離 黃線；逐日累積）
 #    etotal_daily ← e_total（億）         （模組一 藍線）
 #    spot_net     ← spot_net（億）        （模組一 現貨 bar）
-#  單位：cum_etotal / etotal_daily / spot_net 皆換算為「億」(÷1e8)，與
-#  CUM_FLAT_EPS、ETOTAL_WARN 同單位。
+#    spot_net_tpex← spot_net_tpex（億）    （Context 面板 bar；缺值保留 None，
+#                                          舊資料無此 key → 整列 None）
+#  單位：cum_etotal / etotal_daily / spot_net / spot_net_tpex 皆換算為「億」
+#  (÷1e8)，與 CUM_FLAT_EPS、ETOTAL_WARN 同單位。
 YI = 1e8  # 億
 
 
@@ -164,6 +168,7 @@ def load_series(history=None):
         "cum_etotal":   cum,
         "etotal_daily": [g(r, "e_total", YI) for r in rows],
         "spot_net":     [g(r, "spot_net", YI) for r in rows],
+        "spot_net_tpex": [g(r, "spot_net_tpex", YI) for r in rows],
     }
 
 
@@ -316,13 +321,19 @@ def compute(series, cfg):
     else:
         code = "NEUTRAL"                   # ⚪ 訊號分歧，觀察
 
-    verdict = _make_verdict(code, flow_score, 4, stock_ok, warning_active)
+    # ── Context 訊號 C1：上櫃外資同步確認（加分不否決）─────────────────
+    # 只調整 confidence，不進 flow_score、不影響 code 的判定路徑。
+    c1, confidence = _compute_c1(series, code, C)
+
+    verdict = _make_verdict(code, flow_score, 4, stock_ok, warning_active,
+                            confidence)
     signals = {
         "S1_zscore_exit": s1,
         "S2_pc_reversal": s2,
         "S3_premium_cross": s3,
         "S5_spot_turn": s5,
         "S4_cum_turnup": s4,
+        "C1_tpex_confirm": c1,
     }
     warnings = {
         "W1_zscore_newhigh": w1,
@@ -332,22 +343,62 @@ def compute(series, cfg):
     return _envelope(data_date, False, verdict, signals, warnings, C, aligned_n)
 
 
+# ── Context 訊號 C1（bucket="context"）───────────────────────────────
+def _compute_c1(series, code, C):
+    """C1_tpex_confirm：上櫃外資近 TPEX_ALIGN_N 日同步淨買，且當日 verdict 為
+    🟡/🟢 時 confidence +1（僅此一途徑）。不足樣本 → insufficient，不扣分。
+    向後相容：series 無 spot_net_tpex 鍵（舊資料/舊呼叫端）視同全 None。
+    回傳 (signal_dict, confidence)。"""
+    n = C["TPEX_ALIGN_N"]
+    tpex = series.get("spot_net_tpex") or []
+    valid_n = sum(1 for v in tpex if v is not None)
+
+    if valid_n < C["TPEX_MIN_SAMPLE"]:
+        c1 = _sig(False, None, 0, "context",
+                  f"上櫃資料不足（有效 {valid_n} < {C['TPEX_MIN_SAMPLE']}），"
+                  "C1 不參與評分")
+        c1["insufficient"] = True
+        return c1, 0
+
+    tail = tpex[-n:] if len(tpex) >= n else []
+    tail_ok = bool(tail) and all(v is not None for v in tail)
+    tail_sum = sum(tail) if tail_ok else None
+    in_scope = code in ("BOUNCE_BREWING", "REVERSAL_CONFIRMED")
+    C1 = bool(in_scope and tail_ok and tail_sum is not None and tail_sum > 0)
+
+    if C1:
+        detail = f"上櫃外資近 {n} 日同步淨買（合計 {_r(tail_sum)} 億），中小型股風險偏好回溫"
+    elif not in_scope:
+        detail = "verdict 非 🟡/🟢，C1 不評分"
+    elif not tail_ok:
+        detail = f"上櫃近 {n} 日資料不完整，未確認"
+    else:
+        detail = f"上櫃外資近 {n} 日仍淨賣（合計 {_r(tail_sum)} 億），未同步確認"
+
+    c1 = _sig(C1, _r(tail_sum), 0, "context", detail)
+    c1["insufficient"] = False
+    return c1, (1 if C1 else 0)
+
+
 # ── 組裝小工具 ──────────────────────────────────────────────────────
 def _r(v, n=2):
     return round(v, n) if isinstance(v, (int, float)) else v
 
 
-def _make_verdict(code, flow_score, flow_max, stock_ok, warning_active):
+def _make_verdict(code, flow_score, flow_max, stock_ok, warning_active,
+                  confidence=0):
     label, color = VERDICT_META[code]
     return {
         "code": code, "label": label, "color": color,
         "flow_score": flow_score, "flow_max": flow_max,
         "stock_confirmed": bool(stock_ok), "warning_active": bool(warning_active),
+        "confidence": int(confidence),     # 基準 0；目前僅 C1 可 +1
     }
 
 
 def _envelope(data_date, insufficient, verdict, signals, warnings, cfg, aligned_n):
     return {
+        "schema": 2,                       # v2：新增 C1_tpex_confirm 與 confidence
         "data_date": data_date,
         "updated_at": None,                # main() 填入
         "insufficient_data": bool(insufficient),
@@ -359,18 +410,23 @@ def _envelope(data_date, insufficient, verdict, signals, warnings, cfg, aligned_
             "Z_EXTREME": cfg["Z_EXTREME"], "Z_EXIT": cfg["Z_EXIT"],
             "FLOW_MIN": cfg["FLOW_MIN"], "CUM_FLAT_EPS": cfg["CUM_FLAT_EPS"],
             "ETOTAL_WARN": cfg["ETOTAL_WARN"], "MIN_SAMPLE": cfg["MIN_SAMPLE"],
+            "TPEX_ALIGN_N": cfg["TPEX_ALIGN_N"],
+            "TPEX_MIN_SAMPLE": cfg["TPEX_MIN_SAMPLE"],
         },
     }
 
 
 def _empty_signals():
     d = "資料不足，無法判讀"
+    c1 = _sig(False, None, None, "context", d)
+    c1["insufficient"] = True
     return {
         "S1_zscore_exit": _sig(False, None, None, "flow", d),
         "S2_pc_reversal": _sig(False, None, None, "flow", d),
         "S3_premium_cross": _sig(False, None, None, "flow", d),
         "S5_spot_turn": _sig(False, None, None, "flow", d),
         "S4_cum_turnup": _sig(False, None, None, "stock", d),
+        "C1_tpex_confirm": c1,
     }
 
 
@@ -446,16 +502,20 @@ def main():
     v = out["verdict"]
     print(f"[reversal] {out['data_date']}  verdict={v['code']} "
           f"({v['label']})  flow={v['flow_score']}/{v['flow_max']} "
-          f"stock_ok={v['stock_confirmed']}  warning={v['warning_active']}")
+          f"stock_ok={v['stock_confirmed']}  warning={v['warning_active']}  "
+          f"confidence={v['confidence']}")
     print(f"[reversal] 已輸出 → {OUTPUT_FILE}")
 
 
 # ───────────────────────────────────────────────────────────────────
 #  §12 反向自測（不寫檔，造一筆未來假資料驗證守門員邏輯）
 # ───────────────────────────────────────────────────────────────────
-def _synth(reversal_cum):
+def _synth(reversal_cum, tpex=None):
     """造一段乾淨的合成序列：先恐慌、尾端流量全面鬆動。
-    reversal_cum=True → 累積線翻揚（S4 過）；False → 仍續破底（S4 不過）。"""
+    reversal_cum=True → 累積線翻揚（S4 過）；False → 仍續破底（S4 不過）。
+    tpex：None → 不含 spot_net_tpex 鍵（模擬舊呼叫端）；
+          "buy"/"sell" → 尾端 TPEX_ALIGN_N 日上櫃同步淨買/續賣；
+          "none" → 整列 None（模擬舊 history 資料）。"""
     days = [f"2026-05-{d:02d}" for d in range(1, 26)]   # 25 天，足夠 MIN_SAMPLE
     n = len(days)
     z, pc, put, call, cum, etd, spot = ([] for _ in range(7))
@@ -479,9 +539,17 @@ def _synth(reversal_cum):
             acc += (400.0 if reversal_cum else -150.0)   # 翻揚 or 續破底 → S4
         call.append(1300.0)
         cum.append(round(acc, 4))
-    return {"dates": days, "zscore": z, "pc_ratio": pc, "put_price": put,
-            "call_price": call, "cum_etotal": cum, "etotal_daily": etd,
-            "spot_net": spot}
+    out = {"dates": days, "zscore": z, "pc_ratio": pc, "put_price": put,
+           "call_price": call, "cum_etotal": cum, "etotal_daily": etd,
+           "spot_net": spot}
+    if tpex == "none":
+        out["spot_net_tpex"] = [None] * n
+    elif tpex in ("buy", "sell"):
+        align = CFG["TPEX_ALIGN_N"]
+        sign = 1.0 if tpex == "buy" else -1.0
+        out["spot_net_tpex"] = [(-5.0 if i < n - align else sign * 15.0)
+                                for i in range(n)]
+    return out
 
 
 def selftest():
@@ -516,7 +584,48 @@ def selftest():
     assert not y["verdict"]["stock_confirmed"], "S4 守門員不應通過"
     assert y["verdict"]["code"] == "BOUNCE_BREWING", "應停在 🟡 BOUNCE_BREWING"
 
-    print("\n✅ 全部自測通過（守門員邏輯正確：沒有 S4，最高只能到 🟡）")
+    # ── Context C1 三情境 ───────────────────────────────────────────
+    # 4) 🟢 且上櫃同步買 → confidence == 1
+    gb = compute(_synth(reversal_cum=True, tpex="buy"), CFG)
+    print(f"== C1 自測 🟢+上櫃買 ==  verdict={gb['verdict']['code']}  "
+          f"confidence={gb['verdict']['confidence']}  "
+          f"C1={gb['signals']['C1_tpex_confirm']['triggered']}")
+    assert gb["verdict"]["code"] == "REVERSAL_CONFIRMED", "verdict 不應被 C1 改變"
+    assert gb["signals"]["C1_tpex_confirm"]["triggered"], "C1 應觸發"
+    assert gb["verdict"]["confidence"] == 1, "🟢+上櫃同步買 → confidence 應為 1"
+
+    # 5) 🟢 但上櫃續賣 → confidence == 0，verdict code 不變
+    gs = compute(_synth(reversal_cum=True, tpex="sell"), CFG)
+    print(f"== C1 自測 🟢+上櫃賣 ==  verdict={gs['verdict']['code']}  "
+          f"confidence={gs['verdict']['confidence']}  "
+          f"C1={gs['signals']['C1_tpex_confirm']['triggered']}")
+    assert gs["verdict"]["code"] == "REVERSAL_CONFIRMED", "verdict code 不應改變"
+    assert not gs["signals"]["C1_tpex_confirm"]["triggered"], "C1 不應觸發"
+    assert gs["verdict"]["confidence"] == 0, "上櫃續賣 → confidence 應為 0"
+
+    # 6) spot_net_tpex 全 None（模擬舊資料）→ C1 insufficient，
+    #    其餘輸出與「無上櫃資料的改版前行為」逐欄位一致（回歸保護）
+    gn = compute(_synth(reversal_cum=True, tpex="none"), CFG)
+    print(f"== C1 自測 全None ==  verdict={gn['verdict']['code']}  "
+          f"confidence={gn['verdict']['confidence']}  "
+          f"C1_insufficient={gn['signals']['C1_tpex_confirm']['insufficient']}")
+    assert gn["signals"]["C1_tpex_confirm"]["insufficient"], "C1 應標記 insufficient"
+    assert not gn["signals"]["C1_tpex_confirm"]["triggered"], "C1 不應觸發"
+    assert gn["verdict"]["confidence"] == 0, "資料不足不加分也不扣分"
+    # 逐欄位回歸：除 C1 / confidence 外，輸出應與 tpex="buy" 情境完全一致
+    def _strip(res):
+        r = json.loads(json.dumps(res))                  # deep copy
+        r["signals"].pop("C1_tpex_confirm")
+        r["verdict"].pop("confidence")
+        return r
+    assert _strip(gn) == _strip(gb), "C1/confidence 以外的欄位不得受 tpex 資料影響"
+    # 舊呼叫端（series 完全沒有 spot_net_tpex 鍵）也必須走 insufficient 路徑
+    gm = compute(_synth(reversal_cum=True), CFG)
+    assert gm["signals"]["C1_tpex_confirm"]["insufficient"]
+    assert _strip(gm) == _strip(gb), "無 tpex 鍵的舊呼叫端輸出不得改變"
+
+    print("\n✅ 全部自測通過（守門員邏輯正確：沒有 S4，最高只能到 🟡；"
+          "C1 只加 confidence，不動 verdict code）")
 
 
 if __name__ == "__main__":

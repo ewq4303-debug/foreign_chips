@@ -88,6 +88,7 @@ def _make_event(rows, idx, horizon, cfg):
         "flow_score": verdict["flow_score"],
         "stock_confirmed": verdict["stock_confirmed"],
         "warning_active": verdict["warning_active"],
+        "confidence": verdict.get("confidence", 0),
         "insufficient_data": out["insufficient_data"],
     }
     if stats:
@@ -111,9 +112,12 @@ def walk_forward(rows, horizon, cfg):
     return [_make_event(rows, idx, horizon, cfg) for idx in range(len(rows))]
 
 
-def _summarize_group(events, verdict):
+def _summarize_group(events, verdict, confidence=None):
+    """verdict 分組統計；confidence 給定時再依 verdict["confidence"] 細分。"""
     done = [e for e in events if e["verdict"] == verdict and e["forward_return_pct"] is not None
             and not e["insufficient_data"]]
+    if confidence is not None:
+        done = [e for e in done if e.get("confidence", 0) == confidence]
     if not done:
         return {
             "count": 0, "win_rate_pct": None, "avg_return_pct": None,
@@ -152,6 +156,11 @@ def summarize(events):
         "total_events": len(events),
         "valid_events": len(valid),
         "by_verdict": by_verdict,
+        # 核心假設檢定：上櫃同步確認（C1, confidence=1）的 🟢 是否優於未確認的 🟢
+        "reversal_by_confidence": {
+            "confidence_0": _summarize_group(events, "REVERSAL_CONFIRMED", confidence=0),
+            "confidence_1": _summarize_group(events, "REVERSAL_CONFIRMED", confidence=1),
+        },
         "signal_counts": {
             "reversal_confirmed": len(reversals),
             "bounce_brewing": len(brewing),
@@ -187,6 +196,7 @@ def scan(rows, horizon, base_cfg, args):
         "FLOW_MIN": _parse_values(args.flow_min, int),
         "CUM_FLAT_EPS": _parse_values(args.cum_flat_eps, float),
         "ETOTAL_WARN": _parse_values(args.etotal_warn, float),
+        "TPEX_ALIGN_N": _parse_values(args.tpex_align_n, int),
     }
     keys = list(dimensions.keys())
     results = []
@@ -233,6 +243,8 @@ def build_report(rows, horizon, cfg, events, summary, scan_results=None):
             "ETOTAL_WARN": cfg["ETOTAL_WARN"],
             "FLOW_MIN": cfg["FLOW_MIN"],
             "MIN_SAMPLE": cfg["MIN_SAMPLE"],
+            "TPEX_ALIGN_N": cfg["TPEX_ALIGN_N"],
+            "TPEX_MIN_SAMPLE": cfg["TPEX_MIN_SAMPLE"],
         },
         "summary": summary,
         "events": events,
@@ -253,6 +265,7 @@ def main(argv=None):
     parser.add_argument("--flow-min", default=None, help="掃描 REV_FLOW_MIN，例如 2,3")
     parser.add_argument("--cum-flat-eps", default=None, help="掃描 REV_CUM_FLAT_EPS，例如 0,5,10")
     parser.add_argument("--etotal-warn", default=None, help="掃描 REV_ETOTAL_WARN，例如 -300,-500,-700")
+    parser.add_argument("--tpex-align-n", default=None, help="掃描 REV_TPEX_ALIGN_N，例如 1,2,3")
     args = parser.parse_args(argv)
 
     if args.horizon <= 0:
@@ -276,6 +289,10 @@ def main(argv=None):
     for code, item in summary["by_verdict"].items():
         print(f"[backtest] {code:20s} count={item['count']:3d} "
               f"win={item['win_rate_pct']} avg_ret={item['avg_return_pct']}")
+    for key, item in summary["reversal_by_confidence"].items():
+        print(f"[backtest] REVERSAL×{key:13s} count={item['count']:3d} "
+              f"win={item['win_rate_pct']} avg_ret={item['avg_return_pct']} "
+              f"mfe={item['avg_max_favorable_pct']} mae={item['avg_max_adverse_pct']}")
     if scan_results:
         best = scan_results[0]
         print(f"[backtest] best_score={best['score']} overrides={best['overrides']}")

@@ -1,6 +1,7 @@
 {
+  "schema": 2,
   "data_date": "2026-07-14",
-  "updated_at": "2026-07-14T16:23:00.009502+08:00",
+  "updated_at": "2026-07-14T17:17:17.936189+08:00",
   "insufficient_data": false,
   "aligned_n": 368,
   "verdict": {
@@ -10,7 +11,8 @@
     "flow_score": 0,
     "flow_max": 4,
     "stock_confirmed": false,
-    "warning_active": false
+    "warning_active": false,
+    "confidence": 0
   },
   "signals": {
     "S1_zscore_exit": {
@@ -47,6 +49,14 @@
       "threshold": 0,
       "bucket": "stock",
       "detail": "累積 E_Total 仍下行（-1469.62 億，守門員未過）"
+    },
+    "C1_tpex_confirm": {
+      "triggered": false,
+      "value": null,
+      "threshold": 0,
+      "bucket": "context",
+      "detail": "上櫃資料不足（有效 0 < 20），C1 不參與評分",
+      "insufficient": true
     }
   },
   "warnings": {
@@ -75,6 +85,8 @@
     "FLOW_MIN": 2,
     "CUM_FLAT_EPS": 5.0,
     "ETOTAL_WARN": -500.0,
-    "MIN_SAMPLE": 20
+    "MIN_SAMPLE": 20,
+    "TPEX_ALIGN_N": 2,
+    "TPEX_MIN_SAMPLE": 20
   }
 }
