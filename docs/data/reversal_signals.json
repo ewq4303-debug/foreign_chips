@@ -1,7 +1,7 @@
 {
   "schema": 2,
   "data_date": "2026-07-17",
-  "updated_at": "2026-07-17T18:46:40.533635+08:00",
+  "updated_at": "2026-07-17T22:58:58.395434+08:00",
   "insufficient_data": false,
   "aligned_n": 371,
   "verdict": {
@@ -38,17 +38,17 @@
     },
     "S5_spot_turn": {
       "triggered": false,
-      "value": -1890.39,
+      "value": -1883.15,
       "threshold": null,
       "bucket": "flow",
-      "detail": "現貨大幅賣超（-1890.39 億），未轉買亦未急縮"
+      "detail": "現貨大幅賣超（-1883.15 億），未轉買亦未急縮"
     },
     "S4_cum_turnup": {
       "triggered": false,
-      "value": -2116.98,
+      "value": -2109.73,
       "threshold": 0,
       "bucket": "stock",
-      "detail": "累積 E_Total 仍下行（-2116.98 億，守門員未過）"
+      "detail": "累積 E_Total 仍下行（-2109.73 億，守門員未過）"
     },
     "C1_tpex_confirm": {
       "triggered": false,
@@ -74,7 +74,7 @@
     },
     "W3_futures_flip": {
       "triggered": true,
-      "value": -1030.64,
+      "value": -1023.39,
       "threshold": -500.0,
       "detail": "當日 E_Total 大幅翻空，期貨不再偏多對沖"
     }
