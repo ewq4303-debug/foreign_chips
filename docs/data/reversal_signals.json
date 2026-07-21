@@ -1,7 +1,7 @@
 {
   "schema": 2,
   "data_date": "2026-07-21",
-  "updated_at": "2026-07-21T16:12:52.390878+08:00",
+  "updated_at": "2026-07-21T19:07:29.902068+08:00",
   "insufficient_data": false,
   "aligned_n": 373,
   "verdict": {
@@ -52,10 +52,10 @@
     },
     "C1_tpex_confirm": {
       "triggered": false,
-      "value": -18.22,
+      "value": -20.22,
       "threshold": 0,
       "bucket": "context",
-      "detail": "上櫃外資近 2 日仍淨賣（合計 -18.22 億），未同步確認",
+      "detail": "上櫃外資近 2 日仍淨賣（合計 -20.22 億），未同步確認",
       "insufficient": false
     }
   },
