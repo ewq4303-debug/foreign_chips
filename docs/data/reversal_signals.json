@@ -1,68 +1,68 @@
 {
   "schema": 2,
-  "data_date": "2026-07-31",
-  "updated_at": "2026-07-31T19:28:52.558440+08:00",
+  "data_date": "2026-08-03",
+  "updated_at": "2026-08-03T20:21:59.856633+08:00",
   "insufficient_data": false,
-  "aligned_n": 381,
+  "aligned_n": 382,
   "verdict": {
-    "code": "BOUNCE_BREWING",
-    "label": "醞釀反彈",
-    "color": "yellow",
-    "flow_score": 4,
+    "code": "PANIC_CONTINUES",
+    "label": "恐慌持續",
+    "color": "red",
+    "flow_score": 3,
     "flow_max": 4,
     "stock_confirmed": false,
-    "warning_active": false,
+    "warning_active": true,
     "confidence": 0
   },
   "signals": {
     "S1_zscore_exit": {
       "triggered": true,
-      "value": 0.02,
+      "value": 0.15,
       "threshold": 2.0,
       "bucket": "flow",
-      "detail": "Z=0.02 已退出極端區並下行（曾達 6.52）"
+      "detail": "Z=0.15 已退出極端區並下行（曾達 6.52）"
     },
     "S2_pc_reversal": {
       "triggered": true,
-      "value": 1.06,
+      "value": 1.29,
       "threshold": null,
       "bucket": "flow",
       "detail": "Put/Call 反折且賣權單價停漲，避險買盤轉弱"
     },
     "S3_premium_cross": {
-      "triggered": true,
-      "value": -652.23,
+      "triggered": false,
+      "value": -350.26,
       "threshold": 0,
       "bucket": "flow",
-      "detail": "賣權溢價由正轉負，避險溢價消失"
+      "detail": "賣權溢價未明確收斂"
     },
     "S5_spot_turn": {
       "triggered": true,
-      "value": 675.54,
+      "value": -191.91,
       "threshold": null,
       "bucket": "flow",
-      "detail": "現貨由賣超轉買超，賣壓鬆動"
+      "detail": "現貨賣超急縮（今日 -191.91 億）"
     },
     "S4_cum_turnup": {
       "triggered": false,
-      "value": -915.22,
+      "value": -1876.5,
       "threshold": 0,
       "bucket": "stock",
-      "detail": "累積 E_Total 仍下行（-915.22 億，守門員未過）"
+      "detail": "累積 E_Total 仍下行（-1876.5 億，守門員未過）"
     },
     "C1_tpex_confirm": {
       "triggered": false,
-      "value": -157.59,
+      "value": -59.99,
       "threshold": 0,
       "bucket": "context",
-      "detail": "上櫃外資近 2 日仍淨賣（合計 -157.59 億），未同步確認",
+      "detail": "verdict 非 🟡/🟢，C1 不評分",
       "insufficient": false
     }
   },
   "warnings": {
     "W1_zscore_newhigh": {
       "triggered": false,
-      "value": 0.02,
+      "value": 0.15,
       "threshold": 2.0,
       "detail": "Z-Score 未創新高"
     },
@@ -73,10 +73,10 @@
       "detail": "賣權單價/累積線未同步破底"
     },
     "W3_futures_flip": {
-      "triggered": false,
-      "value": -261.65,
+      "triggered": true,
+      "value": -969.94,
       "threshold": -500.0,
-      "detail": "當日 E_Total 仍由期貨偏多對沖"
+      "detail": "當日 E_Total 大幅翻空，期貨不再偏多對沖"
     }
   },
   "config": {
