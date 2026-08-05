@@ -1,14 +1,14 @@
 {
   "schema": 2,
-  "data_date": "2026-08-04",
-  "updated_at": "2026-08-04T19:22:27.208262+08:00",
+  "data_date": "2026-08-05",
+  "updated_at": "2026-08-05T19:20:18.299071+08:00",
   "insufficient_data": false,
-  "aligned_n": 383,
+  "aligned_n": 384,
   "verdict": {
     "code": "BOUNCE_BREWING",
     "label": "醞釀反彈",
     "color": "yellow",
-    "flow_score": 2,
+    "flow_score": 4,
     "flow_max": 4,
     "stock_confirmed": false,
     "warning_active": false,
@@ -17,52 +17,52 @@
   "signals": {
     "S1_zscore_exit": {
       "triggered": true,
-      "value": -0.0,
+      "value": -0.23,
       "threshold": 2.0,
       "bucket": "flow",
-      "detail": "Z=-0.0 已退出極端區並下行（曾達 6.52）"
+      "detail": "Z=-0.23 已退出極端區並下行（曾達 6.52）"
     },
     "S2_pc_reversal": {
-      "triggered": false,
-      "value": 1.07,
+      "triggered": true,
+      "value": 0.73,
       "threshold": null,
       "bucket": "flow",
-      "detail": "Put/Call 仍在高檔，未見反折"
+      "detail": "Put/Call 反折且賣權單價停漲，避險買盤轉弱"
     },
     "S3_premium_cross": {
-      "triggered": false,
-      "value": -430.66,
+      "triggered": true,
+      "value": -632.16,
       "threshold": 0,
       "bucket": "flow",
-      "detail": "賣權溢價未明確收斂"
+      "detail": "賣權-買權價差連跌 2 日，溢價收斂中"
     },
     "S5_spot_turn": {
       "triggered": true,
-      "value": -57.32,
+      "value": 903.08,
       "threshold": null,
       "bucket": "flow",
-      "detail": "現貨賣超急縮（今日 -57.32 億）"
+      "detail": "現貨由賣超轉買超，賣壓鬆動"
     },
     "S4_cum_turnup": {
       "triggered": false,
-      "value": -1357.87,
+      "value": -992.47,
       "threshold": 0,
       "bucket": "stock",
-      "detail": "累積 E_Total 仍下行（-1357.87 億，守門員未過）"
+      "detail": "累積 E_Total 仍下行（-992.47 億，守門員未過）"
     },
     "C1_tpex_confirm": {
       "triggered": false,
-      "value": -33.06,
+      "value": -76.02,
       "threshold": 0,
       "bucket": "context",
-      "detail": "上櫃外資近 2 日仍淨賣（合計 -33.06 億），未同步確認",
+      "detail": "上櫃外資近 2 日仍淨賣（合計 -76.02 億），未同步確認",
       "insufficient": false
     }
   },
   "warnings": {
     "W1_zscore_newhigh": {
       "triggered": false,
-      "value": -0.0,
+      "value": -0.23,
       "threshold": 2.0,
       "detail": "Z-Score 未創新高"
     },
@@ -74,7 +74,7 @@
     },
     "W3_futures_flip": {
       "triggered": false,
-      "value": -43.7,
+      "value": 621.64,
       "threshold": -500.0,
       "detail": "當日 E_Total 仍由期貨偏多對沖"
     }
