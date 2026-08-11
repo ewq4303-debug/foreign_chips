@@ -1,9 +1,9 @@
 {
   "schema": 2,
-  "data_date": "2026-08-10",
-  "updated_at": "2026-08-10T18:15:44.552610+08:00",
+  "data_date": "2026-08-11",
+  "updated_at": "2026-08-11T17:59:47.847008+08:00",
   "insufficient_data": false,
-  "aligned_n": 387,
+  "aligned_n": 388,
   "verdict": {
     "code": "REVERSAL_CONFIRMED",
     "label": "確認轉折",
@@ -17,52 +17,52 @@
   "signals": {
     "S1_zscore_exit": {
       "triggered": true,
-      "value": -0.32,
+      "value": -0.4,
       "threshold": 2.0,
       "bucket": "flow",
-      "detail": "Z=-0.32 已退出極端區並下行（曾達 6.52）"
+      "detail": "Z=-0.4 已退出極端區並下行（曾達 6.48）"
     },
     "S2_pc_reversal": {
       "triggered": true,
-      "value": 0.63,
+      "value": 0.52,
       "threshold": null,
       "bucket": "flow",
       "detail": "Put/Call 反折且賣權單價停漲，避險買盤轉弱"
     },
     "S3_premium_cross": {
-      "triggered": false,
-      "value": -575.07,
+      "triggered": true,
+      "value": -584.03,
       "threshold": 0,
       "bucket": "flow",
-      "detail": "賣權溢價未明確收斂"
+      "detail": "賣權-買權價差連跌 2 日，溢價收斂中"
     },
     "S5_spot_turn": {
-      "triggered": true,
-      "value": 517.15,
+      "triggered": false,
+      "value": 223.29,
       "threshold": null,
       "bucket": "flow",
-      "detail": "現貨由賣超轉買超，賣壓鬆動"
+      "detail": "現貨賣壓未鬆動"
     },
     "S4_cum_turnup": {
       "triggered": true,
-      "value": 214.0,
+      "value": 475.43,
       "threshold": 0,
       "bucket": "stock",
-      "detail": "累積 E_Total 斜率翻揚（214.0 億/5日），結構轉強"
+      "detail": "累積 E_Total 斜率翻揚（475.43 億/5日），結構轉強"
     },
     "C1_tpex_confirm": {
       "triggered": false,
-      "value": -187.88,
+      "value": -125.94,
       "threshold": 0,
       "bucket": "context",
-      "detail": "上櫃外資近 2 日仍淨賣（合計 -187.88 億），未同步確認",
+      "detail": "上櫃外資近 2 日仍淨賣（合計 -125.94 億），未同步確認",
       "insufficient": false
     }
   },
   "warnings": {
     "W1_zscore_newhigh": {
       "triggered": false,
-      "value": -0.32,
+      "value": -0.4,
       "threshold": 2.0,
       "detail": "Z-Score 未創新高"
     },
@@ -74,7 +74,7 @@
     },
     "W3_futures_flip": {
       "triggered": false,
-      "value": 160.82,
+      "value": 217.73,
       "threshold": -500.0,
       "detail": "當日 E_Total 仍由期貨偏多對沖"
     }
