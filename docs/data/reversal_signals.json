@@ -1,7 +1,7 @@
 {
   "schema": 2,
   "data_date": "2026-08-14",
-  "updated_at": "2026-08-14T16:20:17.537911+08:00",
+  "updated_at": "2026-08-14T18:00:22.137756+08:00",
   "insufficient_data": false,
   "aligned_n": 391,
   "verdict": {
@@ -52,7 +52,7 @@
     },
     "C1_tpex_confirm": {
       "triggered": false,
-      "value": -247.48,
+      "value": -239.52,
       "threshold": 0,
       "bucket": "context",
       "detail": "verdict 非 🟡/🟢，C1 不評分",

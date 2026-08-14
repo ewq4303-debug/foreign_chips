@@ -8974,7 +8974,7 @@
       "tx_oi_amount": -781153831000.0,
       "ssf_oi_amount": -222633213000.0,
       "taiex_close": 45811.01,
-      "spot_net_tpex": -11686724902.0,
+      "spot_net_tpex": -10890786702.0,
       "call_oi": 9306.0,
       "call_amt": 414227000.0,
       "put_oi": 16348.0,
@@ -8987,9 +8987,9 @@
       "delta_ssf": 125815000.0,
       "e_total": 58867168421.0,
       "amount_ratio_z": -0.5013337707884336,
-      "spot_net_tpex_cum20": -70710922673.0,
-      "spot_net_tpex_z": -1.2351676988920544,
-      "e_total_broad": 47180443519.0
+      "spot_net_tpex_cum20": -69914984473.0,
+      "spot_net_tpex_z": -1.1389046335128843,
+      "e_total_broad": 47976381719.0
     }
   ]
 }
