@@ -9473,6 +9473,29 @@
       "spot_net_tpex_cum20": -51808004343.0,
       "spot_net_tpex_z": 0.014393538155799104,
       "e_total_broad": 91858125481.0
+    },
+    {
+      "date": "2026-09-17",
+      "spot_net": 12185000820.0,
+      "tx_oi_amount": -731073459000.0,
+      "ssf_oi_amount": -185454878000.0,
+      "taiex_close": 46288.0,
+      "spot_net_tpex": -11614829887.0,
+      "call_oi": 8674.0,
+      "call_amt": 359859000.0,
+      "put_oi": 7052.0,
+      "put_amt": 125105000.0,
+      "p_avg_call": 829.7417569748675,
+      "p_avg_put": 354.8071469086784,
+      "amount_ratio": 0.347650051825854,
+      "contract_ratio": 0.813004380908462,
+      "delta_tx": -27678027000.0,
+      "delta_ssf": -10011577000.0,
+      "e_total": -25504603180.0,
+      "amount_ratio_z": -0.6552949474113806,
+      "spot_net_tpex_cum20": -55500409954.0,
+      "spot_net_tpex_z": -1.2957594867843283,
+      "e_total_broad": -37119433067.0
     }
   ]
 }

@@ -1,14 +1,14 @@
 {
   "schema": 2,
-  "data_date": "2026-09-16",
-  "updated_at": "2026-09-16T22:02:37.980818+08:00",
+  "data_date": "2026-09-17",
+  "updated_at": "2026-09-17T22:06:53.694244+08:00",
   "insufficient_data": false,
-  "aligned_n": 412,
+  "aligned_n": 413,
   "verdict": {
-    "code": "NEUTRAL",
-    "label": "中性／觀察",
-    "color": "grey",
-    "flow_score": 1,
+    "code": "BOUNCE_BREWING",
+    "label": "醞釀反彈",
+    "color": "yellow",
+    "flow_score": 3,
     "flow_max": 4,
     "stock_confirmed": false,
     "warning_active": false,
@@ -17,52 +17,52 @@
   "signals": {
     "S1_zscore_exit": {
       "triggered": false,
-      "value": -0.23,
+      "value": -0.66,
       "threshold": 2.0,
       "bucket": "flow",
-      "detail": "Z=-0.23 未轉弱（斜率未翻負）"
+      "detail": "Z=-0.66：尚未滿足退出條件"
     },
     "S2_pc_reversal": {
-      "triggered": false,
-      "value": 0.96,
+      "triggered": true,
+      "value": 0.35,
       "threshold": null,
       "bucket": "flow",
-      "detail": "Put/Call 仍在高檔，未見反折"
+      "detail": "Put/Call 反折且賣權單價停漲，避險買盤轉弱"
     },
     "S3_premium_cross": {
-      "triggered": false,
-      "value": 225.16,
+      "triggered": true,
+      "value": -474.93,
       "threshold": 0,
       "bucket": "flow",
-      "detail": "賣權溢價仍高（225.16 點），未收斂"
+      "detail": "賣權溢價由正轉負，避險溢價消失"
     },
     "S5_spot_turn": {
       "triggered": true,
-      "value": -179.8,
+      "value": 121.85,
       "threshold": null,
       "bucket": "flow",
-      "detail": "現貨賣超急縮（今日 -179.8 億）"
+      "detail": "現貨由賣超轉買超，賣壓鬆動"
     },
     "S4_cum_turnup": {
       "triggered": false,
-      "value": -1152.16,
+      "value": -665.57,
       "threshold": 0,
       "bucket": "stock",
-      "detail": "累積 E_Total 仍下行（-1152.16 億，守門員未過）"
+      "detail": "累積 E_Total 仍下行（-665.57 億，守門員未過）"
     },
     "C1_tpex_confirm": {
       "triggered": false,
-      "value": -51.39,
+      "value": -141.22,
       "threshold": 0,
       "bucket": "context",
-      "detail": "verdict 非 🟡/🟢，C1 不評分",
+      "detail": "上櫃外資近 2 日仍淨賣（合計 -141.22 億），未同步確認",
       "insufficient": false
     }
   },
   "warnings": {
     "W1_zscore_newhigh": {
       "triggered": false,
-      "value": -0.23,
+      "value": -0.66,
       "threshold": 2.0,
       "detail": "Z-Score 未創新高"
     },
@@ -74,7 +74,7 @@
     },
     "W3_futures_flip": {
       "triggered": false,
-      "value": 943.65,
+      "value": -255.05,
       "threshold": -500.0,
       "detail": "當日 E_Total 仍由期貨偏多對沖"
     }
