@@ -1,68 +1,68 @@
 {
   "schema": 2,
-  "data_date": "2026-10-02",
-  "updated_at": "2026-10-06T01:55:58.176991+08:00",
+  "data_date": "2026-10-06",
+  "updated_at": "2026-10-06T23:42:08.218424+08:00",
   "insufficient_data": false,
-  "aligned_n": 421,
+  "aligned_n": 422,
   "verdict": {
-    "code": "BOUNCE_BREWING",
-    "label": "醞釀反彈",
-    "color": "yellow",
-    "flow_score": 2,
+    "code": "NEUTRAL",
+    "label": "中性／觀察",
+    "color": "grey",
+    "flow_score": 1,
     "flow_max": 4,
     "stock_confirmed": false,
     "warning_active": false,
-    "confidence": 1
+    "confidence": 0
   },
   "signals": {
     "S1_zscore_exit": {
       "triggered": false,
-      "value": -0.73,
+      "value": -0.56,
       "threshold": 2.0,
       "bucket": "flow",
-      "detail": "Z=-0.73：尚未滿足退出條件"
+      "detail": "Z=-0.56 未轉弱（斜率未翻負）"
     },
     "S2_pc_reversal": {
-      "triggered": true,
-      "value": 0.11,
+      "triggered": false,
+      "value": 0.34,
       "threshold": null,
       "bucket": "flow",
-      "detail": "Put/Call 反折且賣權單價停漲，避險買盤轉弱"
+      "detail": "Put/Call 仍在高檔，未見反折"
     },
     "S3_premium_cross": {
-      "triggered": true,
-      "value": -1073.72,
+      "triggered": false,
+      "value": -1015.32,
       "threshold": 0,
       "bucket": "flow",
-      "detail": "賣權-買權價差連跌 2 日，溢價收斂中"
+      "detail": "賣權溢價未明確收斂"
     },
     "S5_spot_turn": {
-      "triggered": false,
-      "value": 26.22,
+      "triggered": true,
+      "value": -66.57,
       "threshold": null,
       "bucket": "flow",
-      "detail": "現貨賣壓未鬆動"
+      "detail": "現貨賣超急縮（今日 -66.57 億）"
     },
     "S4_cum_turnup": {
       "triggered": false,
-      "value": -1126.18,
+      "value": -1796.13,
       "threshold": 0,
       "bucket": "stock",
-      "detail": "累積 E_Total 仍下行（-1126.18 億，守門員未過）"
+      "detail": "累積 E_Total 仍下行（-1796.13 億，守門員未過）"
     },
     "C1_tpex_confirm": {
-      "triggered": true,
-      "value": 122.92,
+      "triggered": false,
+      "value": 5.72,
       "threshold": 0,
       "bucket": "context",
-      "detail": "上櫃外資近 2 日同步淨買（合計 122.92 億），中小型股風險偏好回溫",
+      "detail": "verdict 非 🟡/🟢，C1 不評分",
       "insufficient": false
     }
   },
   "warnings": {
     "W1_zscore_newhigh": {
       "triggered": false,
-      "value": -0.73,
+      "value": -0.56,
       "threshold": 2.0,
       "detail": "Z-Score 未創新高"
     },
@@ -74,7 +74,7 @@
     },
     "W3_futures_flip": {
       "triggered": false,
-      "value": -360.56,
+      "value": -390.61,
       "threshold": -500.0,
       "detail": "當日 E_Total 仍由期貨偏多對沖"
     }
